@@ -20,21 +20,26 @@ data ReorderState a =
 reorder
   :: (MonadIO m, Show a)
   => Conduit (RtpEvent a) m (RtpEvent a)
-reorder = reorderIdle
+reorder = do
+  mrs <- reorderInit
+  case mrs of
+    Nothing -> return ()
+    Just rs -> reorderActive rs
 
-reorderIdle
+reorderInit
   :: (MonadIO m, Show a)
-  => Conduit (RtpEvent a) m (RtpEvent a)
-reorderIdle = do
+  => Consumer (RtpEvent a) m (Maybe (ReorderState a))
+reorderInit = do
   !ib <- await
   case ib of
-    Nothing -> liftIO $ putStrLn "Reorder-Idle: Done."
+    Nothing ->
+      liftIO $ putStrLn "Reorder-Init: EXIT." >> return Nothing
     (Just (OutOfBand (BeginSession si))) -> do
-      liftIO $ putStrLn "Reorder-Idle: Starting new session."
-      reorderActive (emptyReorderState si)
+      liftIO $ putStrLn "Reorder-Init: Starting new session."
+      return (Just (emptyReorderState si))
     (Just msg) -> do
-      liftIO $ putStrLn ("Reorder-Idle: Unexpected message: " ++ show msg)
-      return ()
+      liftIO $ putStrLn ("Reorder-Init: Unexpected message: " ++ show msg)
+      reorderInit
 
 reorderActive
   :: (MonadIO m, Show a)
@@ -46,18 +51,20 @@ reorderActive rs@ReorderState{..} = do
     Nothing -> liftIO $ putStrLn "Reorder: Done."
     (Just m@(OutOfBand _)) -> do
       liftIO $ putStrLn "Reorder Re-Starting session."
-      leftover m
-      reorderIdle
+      mrs <- yield m $$ reorderInit
+      case mrs of
+        Nothing -> return ()
+        Just rs' -> reorderActive rs'
     (Just (InBand (SequenceOf !gapSeq Gap))) -> do
       liftIO $ putStrLn "Reorder Incoming Gap."
       reorderActive (rs { rsNext = gapSeq
                    , rsEvents = Set.filter ((<= gapSeq) . position) rsEvents })
     (Just (InBand (SequenceOf !seqNum !(NoGap e)))) ->
-      if (seqNum < rsNext) then
+      if (fromIntegral (unSeqNum seqNum - unSeqNum rsNext) > rsMaxBufEvts) then
         do liftIO $
-             printf "Reorder (seqNum < rsNext): rsNext = %d, seqNum: %d, dropping: %s.\n"
+             printf "Reorder (seqNum - rsNext) > rsMaxBufEvts: rsNext = %d, seqNum: %d,restarting, buffer contains: %s.\n"
              (unSeqNum rsNext) (unSeqNum seqNum) (show e)
-           reorderActive rs
+           reorderActive (restartReorderStateAt seqNum e rs)
       else
         let
           !es = Set.insert (SequenceOf seqNum e) rsEvents
@@ -80,6 +87,10 @@ emptyReorderState :: SessionInfo -> ReorderState a
 emptyReorderState SessionInfo{..} =
   -- TODO make jitter buffer dimensions configurable
   ReorderState Set.empty 5 25 siStartSeq
+
+restartReorderStateAt :: SeqNum -> a -> ReorderState a -> ReorderState a
+restartReorderStateAt !s !e ReorderState{..} =
+  ReorderState (Set.singleton (SequenceOf s e)) rsMinBufEvts rsMaxBufEvts s
 
 propagateWithGap
   :: (MonadIO m)

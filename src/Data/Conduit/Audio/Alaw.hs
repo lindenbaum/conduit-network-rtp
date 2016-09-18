@@ -1,5 +1,5 @@
 module Data.Conduit.Audio.Alaw
-  (Alaw(..), alawToLinear, alawToLinear16K, linearToAlaw)
+  (Alaw(..), alawToLinear, alawToLinear16k, linearToAlaw)
 where
 
 import           Data.Conduit.Audio.Pcm
@@ -7,20 +7,40 @@ import           Data.Bits
 import qualified Data.ByteString      as B
 import           Data.Int
 import qualified Data.Vector.Storable as V
+import qualified Data.Vector.Storable.Mutable as M
 import           Data.Word
+import           Control.Monad.ST
 
+-- | ALaw encoded samples in a raw 'ByteString'
 newtype Alaw = Alaw B.ByteString
 
+-- | Decode ALaw samples into 16bit, 8kHz PCM.
 alawToLinear :: Alaw -> Pcm8KMono
 alawToLinear (Alaw !bs) = Pcm $ V.fromList $ decodeAlawSample <$> B.unpack bs
 
--- | Linear interpolation of 8k to 16k
-alawToLinear16K :: Alaw -> Pcm16KMono
-alawToLinear16K (Alaw !bs) =
-  Pcm $ V.fromList (upscale . decodeAlawSample =<< B.unpack bs)
+-- | Linear interpolation of 8k Alaw to 16k PCM 16bit, note that the filter
+-- needs the last input in order to smooth the transition between buffers.
+alawToLinear16k :: Int16 -> Alaw -> (Int16, Pcm16KMono)
+alawToLinear16k lastVal (Alaw !bs) =
+  retLast $ pcmModify interpolate $ Pcm $ V.fromList (twice . decodeAlawSample =<< B.unpack bs)
   where
-    upscale !x = [x,x] -- TODO
+    retLast p@(Pcm v) = (V.last v, p)
+    twice !x = [0, x]
+    interpolate :: forall s . V.MVector s Int16 -> ST s ()
+    interpolate !v = go (M.length v)
+      where
+        go :: Int -> ST s ()
+        go !len = loop 0 lastVal
+          where
+            loop :: Int -> Int16 -> ST s ()
+            loop !i !prev
+              | (i + 1) >= len = return ()
+              | otherwise = do
+                  !next <- M.unsafeRead v (i + 1)
+                  M.unsafeWrite v i ((next `unsafeShiftR` 1) + (prev `unsafeShiftR` 1))
+                  loop (i + 2) next
 
+-- | Convert 8kHz Mono 16bit to ALaw.
 linearToAlaw :: Pcm8KMono -> Alaw
 linearToAlaw (Pcm !vec) = Alaw $ B.pack $ encodeAlawSample <$> V.toList vec
 

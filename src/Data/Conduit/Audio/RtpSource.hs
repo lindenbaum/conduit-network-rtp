@@ -16,12 +16,12 @@ import           Data.Conduit.Audio.RtpPacket                as X
                                               , SeqNum(..)
                                               , Header(..)
                                               , deserialize)
-import           Data.Conduit                                as X
 import           Data.Conduit.Audio.Event                    as X
 import           Data.Conduit.Network.UDP                    as X
 import           Data.Streaming.Network                      as X
 import           Network.Socket               (close)
 import           Text.Printf                                 as X
+import           Data.Conduit                                as X
 import           Control.Monad                               as X
 import           Control.Monad.IO.Class                      as X
 import           Control.Monad.Trans.Resource                as X
@@ -54,9 +54,10 @@ session = (initiateSession >>= mapM_ continueSession >> session)
 
 -- | Wait for the first RTP packet and send 'Beginsession'.
 initiateSession
-  :: Monad m
+  :: MonadIO m
   => ConduitM Packet RtpEventRaw m (Maybe SessionInfo)
 initiateSession = do
+  liftIO (putStrLn "initiateSession")
   mp <- await
   case mp of
     Nothing ->
@@ -64,18 +65,18 @@ initiateSession = do
     Just p@(Packet Header{..} _) ->
       do let !si = SessionInfo ssrc sequenceNumber timestamp
          yieldOutOfBand (BeginSession si)
-         leftover p
+         yieldInband sequenceNumber p
          return (Just si)
 
 -- | Convert 'Packet' messages to 'RtpEvent's until the ssrc changes, in that case
 -- send a 'EndSession' 'OutOfBand'. TODO Add RTCP support, RTCP defines /BYE/ messages.
 continueSession
-  :: Monad m
+  :: MonadIO m
   => SessionInfo -> Conduit Packet m RtpEventRaw
-continueSession SessionInfo{..} = await >>= mapM_ go
+continueSession !si@SessionInfo{..} = await >>= mapM_ go
   where
-    go !p@(Packet Header{..} _) =
-      when (ssrc == siSsrc) (yieldInband sequenceNumber p)
+    go !p@(Packet Header{..} _) = do
+      when (ssrc == siSsrc) (yieldInband sequenceNumber p >> continueSession si)
 
 -- | Listen to incoming RTP packets on a UDP port.
 udpSession

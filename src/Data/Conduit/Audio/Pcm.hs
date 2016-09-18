@@ -4,7 +4,7 @@ module Data.Conduit.Audio.Pcm
        , PcmFormat(..), PcmChannels(..), PcmRate(..)
        , pcmRateVal, pcmChannelsVal
        , pcmRate, pcmChannels
-       , pcmEmpty, pcmFromList, pcmLength, foldPcm, update)
+       , pcmEmpty, pcmFromList, pcmLength, foldPcm, update, pcmModify)
        where
 
 import           Data.Int
@@ -12,12 +12,17 @@ import qualified Data.Vector.Storable as V
 import           Text.Printf
 import           GHC.TypeLits
 import           Data.Proxy
+import           Control.Monad.ST (ST)
 
 -- | Pulse coded audio samples annotated with a type indicating the format
 newtype Pcm (i :: PcmFormat) = Pcm RawPcm
 
 -- | Pulse coded audio samples, each represented as 'Int16'
 type RawPcm = V.Vector Int16
+
+-- | High performance modification (possibly in-place)
+pcmModify :: (forall s. V.MVector s Int16 -> ST s ()) -> Pcm ('MkPcmFormat c r) -> Pcm ('MkPcmFormat c' r')
+pcmModify f (Pcm !vin) = Pcm (V.modify f vin)
 
 -- | Pulse coded audio sample format
 data PcmFormat = MkPcmFormat PcmChannels PcmRate

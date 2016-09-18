@@ -6,8 +6,8 @@ homepage:            https://github.com/sheyll/conduit-network-rtp#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Sven Heyll
-maintainer:          sven.heyll@lindenbaum.eu
-copyright:           2016 Sven Heyll, Lindenbaum GmbH
+maintainer:          sven.heyll@gmail.com
+copyright:           2016 Sven Heyll
 category:            Audio
 build-type:          Simple
 -- extra-source-files:
@@ -18,6 +18,7 @@ library
   exposed-modules:     Data.Conduit.Audio.Alaw
                      , Data.Conduit.Audio.Event
                      , Data.Conduit.Audio.Partial
+                     , Data.Conduit.Audio.PcmDebugSink
                      , Data.Conduit.Audio.Pcm
                      , Data.Conduit.Audio.Reorder
                      , Data.Conduit.Audio.RtpAlawSource
@@ -73,10 +74,11 @@ library
                      , inline-c >= 0.5.5 && < 0.5.6
                      , isobmff-builder >= 0.11.0.0 && < 0.12
                      , network >= 2.6 && < 2.7
+                     , primitive >= 0.6 && < 0.7
                      , process >= 1.4 && < 1.5
                      , resourcet >= 1.1 && < 1.2
-                     , streaming-commons >= 0.1 && < 0.2
                      , spool == 0.1
+                     , streaming-commons >= 0.1 && < 0.2
                      , text >= 1.2.2.1 && < 2
                      , vector >= 0.11 && < 0.12
 
