@@ -17,12 +17,16 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.Conduit.Audio.Alaw
                      , Data.Conduit.Audio.Event
-                     , Data.Conduit.Audio.JitterBuffer
                      , Data.Conduit.Audio.Partial
                      , Data.Conduit.Audio.Pcm
+                     , Data.Conduit.Audio.Reorder
+                     , Data.Conduit.Audio.RtpAlawSource
                      , Data.Conduit.Audio.RtpPacket
                      , Data.Conduit.Audio.RtpSource
-  default-extensions:  BangPatterns
+  default-language:    Haskell2010
+  default-extensions:  ApplicativeDo
+                     , Arrows
+                     , BangPatterns
                      , ConstraintKinds
                      , CPP
                      , DataKinds
@@ -31,15 +35,21 @@ library
                      , DeriveFoldable
                      , DeriveFunctor
                      , DeriveGeneric
+                     , DeriveLift
                      , DeriveTraversable
                      , DuplicateRecordFields
+                     , EmptyDataDecls
+                     , EmptyCase
                      , FlexibleInstances
                      , FlexibleContexts
                      , FunctionalDependencies
                      , GADTs
                      , GeneralizedNewtypeDeriving
                      , KindSignatures
+                     , LambdaCase
                      , MultiParamTypeClasses
+                     , MultiWayIf
+                     , NamedFieldPuns
                      , OverloadedStrings
                      , QuasiQuotes
                      , RecordWildCards
@@ -55,14 +65,15 @@ library
                      , TypeSynonymInstances
                      , UnicodeSyntax
   build-depends:       base >= 4.9 && < 5
-                     , cereal >= 0.5.3 && < 0.6
                      , bytestring >= 0.10.8 && < 0.11
+                     , cereal >= 0.5.3 && < 0.6
                      , conduit >= 1.2.7 && < 1.3
                      , conduit-extra >= 1.1 && < 1.2
                      , containers >= 0.5 && < 0.6
                      , inline-c >= 0.5.5 && < 0.5.6
                      , isobmff-builder >= 0.11.0.0 && < 0.12
                      , network >= 2.6 && < 2.7
+                     , process >= 1.4 && < 1.5
                      , resourcet >= 1.1 && < 1.2
                      , streaming-commons >= 0.1 && < 0.2
                      , text >= 1.2.2.1 && < 2

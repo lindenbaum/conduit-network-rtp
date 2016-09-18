@@ -47,7 +47,7 @@ data InOrOutOfBand a b = InBand !a | OutOfBand !b
 
 -- | Something that happend before or after something else.
 data SequenceOf a =
-    SequenceOf { sequenceNumber :: !SeqNum
+    SequenceOf { position :: !SeqNum
                , payload :: !a }
   deriving Show
 
@@ -59,3 +59,4 @@ instance Ord (SequenceOf a) where
 
 -- | A wrapper for cases where the signal is interrupted.
 data HasGaps a = NoGap !a | Gap
+  deriving Show

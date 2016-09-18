@@ -1,4 +1,6 @@
-module Data.Conduit.Audio.Alaw (Alaw(..), alawToLinear, linearToAlaw)  where
+module Data.Conduit.Audio.Alaw
+  (Alaw(..), alawToLinear, alawToLinear16K, linearToAlaw)
+where
 
 import           Data.Conduit.Audio.Pcm
 import           Data.Bits
@@ -9,10 +11,17 @@ import           Data.Word
 
 newtype Alaw = Alaw B.ByteString
 
-alawToLinear :: Alaw -> Pcm
+alawToLinear :: Alaw -> Pcm8KMono
 alawToLinear (Alaw !bs) = Pcm $ V.fromList $ decodeAlawSample <$> B.unpack bs
 
-linearToAlaw :: Pcm -> Alaw
+-- | Linear interpolation of 8k to 16k
+alawToLinear16K :: Alaw -> Pcm16KMono
+alawToLinear16K (Alaw !bs) =
+  Pcm $ V.fromList (upscale . decodeAlawSample =<< B.unpack bs)
+  where
+    upscale !x = [x,x] -- TODO
+
+linearToAlaw :: Pcm8KMono -> Alaw
 linearToAlaw (Pcm !vec) = Alaw $ B.pack $ encodeAlawSample <$> V.toList vec
 
 decodeAlawSample :: Word8 -> Int16
