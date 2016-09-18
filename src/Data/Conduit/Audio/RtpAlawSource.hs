@@ -11,7 +11,8 @@ import           Data.Conduit.Audio.Pcm       as X
 import           Data.Conduit.Audio.Reorder   as X
 import           Data.Conduit.Audio.RtpSource as X
 
-import System.Process
+import System.IO (Handle)
+import System.Process (shell)
 import Data.Streaming.Process
 import Data.Conduit.Binary
 import Data.Vector.Storable.ByteString
@@ -36,11 +37,13 @@ rtpAlawToPcm16k = awaitEventForever go yieldInbandGap yieldOutOfBand
 
 
 dbgSoundCardSink
-  :: MonadIO m => Sink (RtpEvent Pcm16KMono) m
+  :: MonadIO m => Sink (RtpEvent Pcm16KMono) m ()
 dbgSoundCardSink = do
   let cp = shell "play -x -r 16000 -b 16 -c1  -e signed-integer -t raw -"
   (sin :: Handle, Inherited, Inherited, cph) <- streamingProcess cp
   awaitForever pcmToByteString =$= sinkHandle sin
   waitForStreamingProcess cph
+  return ()
   where
-    pcmToByteString (InBand _ (NoGap (Pcm !d))) = B.pack (V.toList
+    pcmToByteString (InBand (SequenceOf s (NoGap (Pcm !d)))) = yield (vectorToByteString d)
+    pcmToByteString _ = return ()
