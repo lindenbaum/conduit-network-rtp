@@ -373,14 +373,12 @@ gst-launch-1.0 autoaudiosrc is-live=true ! audioconvert ! audioresample ! alawen
 Here are the type class instances:
 
 > instance Show Packet where
->   show (Packet hdr bd) = printf "RTP %s << " (show hdr)
->     (printf "Pcm buffer with %d samples:\n<< " (B.length bd)
->       ++
->       (if B.length bd > 10
->        then unwords (printf "%0.4x" <$> B.unpack (B.take 10 bd)) ++ " ..."
->        else unwords (printf "%0.4x" <$> B.unpack bd))
->       ++  " >>\n")
-
+>   show (Packet hdr bd) =
+>        printf "RTP %s << " (show hdr)
+>     ++ (if B.length bd > 10
+>         then unwords (printf "%0.4x" <$> B.unpack (B.take 10 bd)) ++ " ..."
+>         else unwords (printf "%0.4x" <$> B.unpack bd))
+>     ++ " >>\n"
 
 A monoid instance can be nice:
 
