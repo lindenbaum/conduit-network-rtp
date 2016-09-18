@@ -23,10 +23,10 @@ The relevant output will be contained in the 'Packet' and 'Header' data types.
 The Functor style of 'Packet' allows to keep the RTP header info around, while
 converting and analysing the packet.
 
-> data Packet bd =
+> data Packet =
 >   Packet { header :: !Header
->          , body   :: !bd }
->   deriving (Eq,Functor,Foldable,Traversable)
+>          , body   :: !B.ByteString }
+>   deriving (Eq)
 
 
 > data Header =
@@ -76,14 +76,14 @@ following the fixed size RTP header:
 
 Deserialize a complete RTP datagram:
 
-> deserialize :: B.ByteString -> Packet B.ByteString
+> deserialize :: B.ByteString -> Packet
 > deserialize bs = either error id (runGet getPacket bs)
 
 Below are only internal functions.
 
 This function will parse an 'Rtp' packet from a 'ByteString':
 
-> getPacket :: Get (Packet B.ByteString)
+> getPacket :: Get Packet
 > getPacket = do
 
 First read the header:
@@ -372,12 +372,19 @@ gst-launch-1.0 autoaudiosrc is-live=true ! audioconvert ! audioresample ! alawen
 
 Here are the type class instances:
 
-> instance Show bd => Show (Packet bd) where
->   show (Packet hdr bd) = printf "RTP %s %s" (show hdr) (show bd)
+> instance Show Packet where
+>   show (Packet hdr bd) = printf "RTP %s << " (show hdr)
+>     (printf "Pcm buffer with %d samples:\n<< " (B.length bd)
+>       ++
+>       (if B.length bd > 10
+>        then unwords (printf "%0.4x" <$> B.unpack (B.take 10 bd)) ++ " ..."
+>        else unwords (printf "%0.4x" <$> B.unpack bd))
+>       ++  " >>\n")
+
 
 A monoid instance can be nice:
 
-> instance Monoid bd => Monoid (Packet bd) where
+> instance Monoid Packet where
 >   mempty = Packet mempty mempty
 >   mappend (Packet h1 b1) (Packet h2 b2) = Packet (h1 <> h2) (b1 <> b2)
 
@@ -436,10 +443,10 @@ Of course, the interesting things happening in 'Header's instance:
 
 Serialization is straight forward the opposite of deserialization.
 
-> serialize :: Packet B.ByteString -> B.ByteString
+> serialize :: Packet -> B.ByteString
 > serialize pkg = runPut (putPacket pkg)
 
-> putPacket :: Packet B.ByteString -> Put
+> putPacket :: Packet -> Put
 > putPacket (Packet h b) = do
 
 First write the header then the body.
