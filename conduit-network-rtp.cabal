@@ -26,7 +26,6 @@ library
                      , Data.Conduit.Audio.RtpSource
   default-language:    Haskell2010
   default-extensions:  ApplicativeDo
-                     , Arrows
                      , BangPatterns
                      , ConstraintKinds
                      , CPP
