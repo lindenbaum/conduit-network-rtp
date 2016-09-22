@@ -14,7 +14,8 @@ data ReorderState a =
     rsEvents     :: !(Set.Set (SequenceOf a)),
     rsMinBufEvts :: !Int,
     rsMaxBufEvts :: !Int,
-    rsNext       :: !SeqNum
+    rsNext       :: !SeqNum,
+    rsSession    :: !SessionInfo
   }
 
 reorder
@@ -24,7 +25,9 @@ reorder = do
   mrs <- reorderInit
   case mrs of
     Nothing -> return ()
-    Just rs -> reorderActive rs
+    Just rs ->
+      do yield (OutOfBand (BeginSession (rsSession rs)))
+         reorderActive rs
 
 reorderInit
   :: (MonadIO m, Show a)
@@ -84,13 +87,13 @@ reorderActive rs@ReorderState{..} = do
                     reorderActive (rs {rsEvents = es'', rsNext = nextSeq''})
 
 emptyReorderState :: SessionInfo -> ReorderState a
-emptyReorderState SessionInfo{..} =
+emptyReorderState si@SessionInfo{..} =
   -- TODO make jitter buffer dimensions configurable
-  ReorderState Set.empty 5 25 siStartSeq
+  ReorderState Set.empty 5 25 siStartSeq si
 
 restartReorderStateAt :: SeqNum -> a -> ReorderState a -> ReorderState a
 restartReorderStateAt !s !e ReorderState{..} =
-  ReorderState (Set.singleton (SequenceOf s e)) rsMinBufEvts rsMaxBufEvts s
+  ReorderState (Set.singleton (SequenceOf s e)) rsMinBufEvts rsMaxBufEvts s rsSession
 
 propagateWithGap
   :: (MonadIO m)

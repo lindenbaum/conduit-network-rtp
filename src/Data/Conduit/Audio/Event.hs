@@ -3,7 +3,6 @@ module Data.Conduit.Audio.Event
   (
   -- * Basic Event Conduits
     type Event
-  , filterGapsAndOutOfBand
   , yieldInbandGap
   , yieldInband
   , yieldOutOfBand
@@ -19,11 +18,6 @@ import           Data.Conduit.Audio.RtpPacket (SeqNum (..))
 
 -- | Events
 type Event a b = InOrOutOfBand (SequenceOf (HasGaps a)) b
-
--- | A conduit that removes all 'Event's
-filterGapsAndOutOfBand :: Monad m => Conduit (Event a b) m a
-filterGapsAndOutOfBand =
-  awaitEventForever (\_ a -> yield a) (\_ -> return ()) (\_ -> return ())
 
 yieldInbandGap :: Monad m => SeqNum -> Producer m (Event a b)
 yieldInbandGap !s = yield (InBand (SequenceOf s Gap))
