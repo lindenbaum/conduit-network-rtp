@@ -40,7 +40,11 @@ data SessionInfo =
   SessionInfo { siSsrc :: !Word32
               , siStartSeq :: !SeqNum
               , siStartTimeStamp :: !Word32 }
-  deriving Show
+
+instance Show SessionInfo where
+  show (SessionInfo ssrc (MkSeqNum stseq) startts) =
+    printf "RTP session SSRC: %d  initial sequence number: %d, start timestamp: %d"
+    ssrc stseq startts
 
 -- | Now something interesting. A monadic bind of consumers will sequence the
 -- conduits. We start a new RTP Session by first waiting for the first packet,
@@ -57,13 +61,13 @@ initiateSession
   :: MonadIO m
   => ConduitM Packet RtpEventRaw m (Maybe SessionInfo)
 initiateSession = do
-  liftIO (putStrLn "initiateSession")
   mp <- await
   case mp of
     Nothing ->
       return Nothing
     Just p@(Packet Header{..} _) ->
       do let !si = SessionInfo ssrc sequenceNumber timestamp
+         liftIO (printf "RtpSource: new RTP session: %s\n" (show si))
          yieldOutOfBand (BeginSession si)
          yieldInband sequenceNumber p
          return (Just si)
@@ -76,7 +80,8 @@ continueSession
 continueSession !si@SessionInfo{..} = await >>= mapM_ go
   where
     go !p@(Packet Header{..} _) = do
-      when (ssrc == siSsrc) (yieldInband sequenceNumber p >> continueSession si)
+      if (ssrc == siSsrc) then (yieldInband sequenceNumber p >> continueSession si)
+        else liftIO $ printf "RtpSource: SSRC mismatch: expected: %d got %d\n" siSsrc ssrc
 
 -- | Listen to incoming RTP packets on a UDP port.
 udpSession

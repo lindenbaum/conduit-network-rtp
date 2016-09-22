@@ -89,7 +89,7 @@ reorderActive rs@ReorderState{..} = do
 emptyReorderState :: SessionInfo -> ReorderState a
 emptyReorderState si@SessionInfo{..} =
   -- TODO make jitter buffer dimensions configurable
-  ReorderState Set.empty 5 25 siStartSeq si
+  ReorderState Set.empty 10 20 siStartSeq si
 
 restartReorderStateAt :: SeqNum -> a -> ReorderState a -> ReorderState a
 restartReorderStateAt !s !e ReorderState{..} =
