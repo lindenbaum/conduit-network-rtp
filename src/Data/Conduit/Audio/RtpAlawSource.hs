@@ -3,12 +3,47 @@
 --
 -- This is a __top-level__ module, it re-exports many other modules.
 module Data.Conduit.Audio.RtpAlawSource
-  ( rtpAlaw16kSource, rtpAlawToPcm16k, rtpAlaw8kSource, rtpAlawToPcm8k, module X ) where
+  ( rtpAlaw16kSource, rtpAlawToPcm16k
+  , rtpAlaw8kSource, rtpAlawToPcm8k
+  , rtpAlaw48kStereoSource, rtpAlawToPcm48kStereo
+  , module X ) where
 
 import           Data.Conduit.Audio.Alaw
 import           Data.Conduit.Audio.Pcm       as X
 import           Data.Conduit.Audio.Reorder   as X
 import           Data.Conduit.Audio.RtpSource as X
+
+-- | Listen to incoming RTP packets on a UDP port and convert them to 'Pcm' packets.
+-- The 8k sample rate is automatically converted to 48k (Stereo).
+rtpAlaw48kStereoSource
+  :: MonadResource m
+  => Int
+  -> HostPreference
+  -> Source m (RtpEvent Pcm48KStereo)
+rtpAlaw48kStereoSource !port !host =
+  udpSession port host =$= reorder =$= rtpAlawToPcm48kStereo
+
+-- | Convert RTP packets to 'Pcm' packets.
+-- The 8k sample rate is automatically converted to 16k.
+rtpAlawToPcm48kStereo
+  :: Monad m
+  => Conduit RtpEventRaw m (RtpEvent Pcm48KStereo)
+rtpAlawToPcm48kStereo = go 0
+  where
+    go !lastVal =
+      do  me <- await
+          case me of
+            Nothing -> return ()
+            Just (InBand (SequenceOf !s (NoGap (Packet Header{..} !body))))
+              | payloadType == 8 ->
+                let (!lastVal', !pcm) = alawToLinear48kStereo lastVal (Alaw body)
+                in yield (InBand (SequenceOf s (NoGap pcm))) >> go lastVal'
+              | otherwise ->
+                yield (InBand (SequenceOf s Gap)) >> go lastVal
+            Just (InBand (SequenceOf !s Gap)) ->
+              yield (InBand (SequenceOf s Gap)) >> go lastVal
+            Just (OutOfBand !b) ->
+              yield (OutOfBand b) >> go lastVal
 
 -- | Listen to incoming RTP packets on a UDP port and convert them to 'Pcm' packets.
 -- The 8k sample rate is automatically converted to 16k.

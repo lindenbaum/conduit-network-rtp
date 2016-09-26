@@ -1,5 +1,5 @@
 module Data.Conduit.Audio.Alaw
-  (Alaw(..), alawToLinear, alawToLinear16k, linearToAlaw)
+  (Alaw(..), alawToLinear, alawToLinear16k, alawToLinear48kStereo, linearToAlaw)
 where
 
 import           Data.Conduit.Audio.Pcm
@@ -17,6 +17,17 @@ newtype Alaw = Alaw B.ByteString
 -- | Decode ALaw samples into 16bit, 8kHz PCM.
 alawToLinear :: Alaw -> Pcm8KMono
 alawToLinear (Alaw !bs) = Pcm $ V.fromList $ decodeAlawSample <$> B.unpack bs
+
+-- | Linear interpolation of 8k Alaw to 16k PCM 16bit, note that the filter
+-- needs the last input in order to smooth the transition between buffers.
+-- TODO highly experimental
+alawToLinear48kStereo :: Int16 -> Alaw -> (Int16, Pcm48KStereo)
+alawToLinear48kStereo _lastVal (Alaw !bs) =
+  (0, Pcm $ V.fromList (pump . decodeAlawSample =<< B.unpack bs))
+  where
+    pump !x = [x,x,x,x,x,x  -- Left Channel
+              ,x,x,x,x,x,x] -- Right Channel
+
 
 -- | Linear interpolation of 8k Alaw to 16k PCM 16bit, note that the filter
 -- needs the last input in order to smooth the transition between buffers.
