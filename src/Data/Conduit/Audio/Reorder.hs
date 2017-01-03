@@ -44,6 +44,23 @@ reorderInit = do
       liftIO $ putStrLn ("Reorder-Init: Unexpected message: " ++ show msg)
       reorderInit
 
+{-
+ Reordering output:
+
+  A stream of Pcm buffers in the order determined by the sequence numbers
+  With Gap sequence buffers between where there is a gap in the sequence numbers
+  of packets.
+
+  The maximum delay determines how long to wait. It and depends on the packet
+  duration, and the current presentation time stamp, or might be set to a fixed
+  limit for realtime applications.
+
+  In realtime applications there won't be a lot of wiggle room for udp packets
+  to arrive too early. The presentation time stamp will always be more or less
+  ASAP, in that case it might not be worth the effort.
+
+-}
+
 reorderActive
   :: (MonadIO m, Show a)
   => ReorderState a
