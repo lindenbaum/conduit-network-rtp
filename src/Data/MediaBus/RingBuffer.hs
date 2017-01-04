@@ -8,6 +8,7 @@ module Data.MediaBus.RingBuffer
       RingBuffer()
       -- ** Constructor
     , newRingBuffer
+    , fromList
       -- ** Push Operations
     , push
     , tryPush
@@ -16,7 +17,9 @@ module Data.MediaBus.RingBuffer
       -- ** Pop Operations
     , pop
     , pop_
+    , popAndSet
     , tryPop
+    , tryPopAndSet
     , popAll
       -- ** Size and Capacity Accessors
     , size
@@ -28,8 +31,9 @@ import           Data.Array
 import           Data.Default
 import           Text.Printf
 import           Data.Typeable
-import           Data.List     ( unfoldr )
-import           Data.Function ( on )
+import           Data.List             ( unfoldr )
+import           Data.Function         ( on )
+import           Data.Functor.Identity
 
 -- | A __bounded__ /FIFO container/ with @O(1)@ time- and space complexity back insertion
 -- ('push') and front extraction ('pop').
@@ -56,17 +60,26 @@ instance (Typeable e, Show e) =>
                (show (assocs ringBuffer))
 
 -- | Create a new 'RingBuffer' with the given 'capacity'. All elements are
--- initialised to 'def', hence the 'Default' constraint on the type parameter.
+-- initialized to 'def', hence the 'Default' constraint on the type parameter.
 --
--- The ring size must not exceed @2^28@.
+-- The ring capacity must not exceed @2^28@.
 newRingBuffer :: (Default e) => Int -> RingBuffer e
-newRingBuffer n = if n < 1 || n >= 2 ^ 28
-                  then error (printf "Invalid ring size: %d" n)
-                  else MkRingBuffer { ringBuffer = listArray (0, n - 1)
-                                                             (replicate n def)
-                                    , readIndex = 0
-                                    , writeIndex = 0
-                                    }
+newRingBuffer n = fromList (replicate n def)
+
+-- | Create an __empty__ 'RingBuffer' from a list of initial values, the length
+-- of the list determines the 'capacity'.
+--
+-- The ring capacity must not exceed @2^28@.
+fromList :: [e] -> RingBuffer e
+fromList initialElements =
+    let n = length initialElements
+    in
+        if n < 1 || n >= 2 ^ (28 :: Int)
+        then error (printf "Invalid ring size: %d" n)
+        else MkRingBuffer { ringBuffer = listArray (0, n - 1) initialElements
+                          , readIndex = 0
+                          , writeIndex = 0
+                          }
 
 -- | Add an element to end of the ring. If the ring 'isFull' the oldest element
 -- will be overwritten and the next 'pop' will return the second oldest element.
@@ -76,9 +89,7 @@ push e r@MkRingBuffer{ringBuffer,readIndex,writeIndex} =
   where
     n = capacity r
     ringBuffer' = ringBuffer // [ (writeIndex `rem` n, e) ]
-    readIndex' = if writeIndex == readIndex + n
-                 then (readIndex + 1) `rem` n
-                 else readIndex
+    readIndex' = if isFull r then (readIndex + 1) `rem` n else readIndex
     writeIndex' = writeIndex + 1 -
         if writeIndex + 1 >= 2 * n then n else 0
 
@@ -104,29 +115,62 @@ pushOut e r = let (o, r') = pop r
 -- return the next element in the buffer, and adjust the ring such that the next
 -- 'push' will be returned by the subsequent pop.
 pop :: RingBuffer e -> (e, RingBuffer e)
-pop r@MkRingBuffer{ringBuffer,readIndex,writeIndex} =
-    (e, MkRingBuffer ringBuffer readIndex' writeIndex')
-  where
-    e = ringBuffer ! readIndex
-    readIndex' = (readIndex + 1) `rem` n
-    writeIndex' = let writeIndexMod = writeIndex `rem` n
-                  in
-                      if writeIndexMod == readIndex'
-                      then readIndex'
-                      else writeIndex
-    n = capacity r
+pop = popAndModify (\x -> (x, Nothing))
 
--- | Update a ring as if an element was 'pop'ed.
+-- | Update a ring as if 'pop' was called.
 pop_ :: RingBuffer e -> RingBuffer e
-pop_ = snd . pop
+pop_ = runIdentity . popAndModify (const (Identity Nothing))
+
+-- | Return a pair of the oldest element, and a new ring. If the ring is empty,
+-- return the next element in the buffer, and adjust the ring such that the next
+-- 'push' will be returned by the subsequent pop.
+--
+-- The slot in the the ring from which an element was popped will contain the
+-- given value in the returned ring buffer.
+popAndSet :: e -> RingBuffer e -> (e, RingBuffer e)
+popAndSet replacement = popAndModify (\poppedElement -> ( poppedElement
+                                                        , Just replacement
+                                                        ))
 
 -- | Pop an element if the ring is not empty.
 tryPop :: RingBuffer e -> Maybe (e, RingBuffer e)
 tryPop r = if size r > 0 then Just (pop r) else Nothing
 
+-- | Pop an element if the ring is not empty.
+tryPopAndSet :: e -> RingBuffer e -> Maybe (e, RingBuffer e)
+tryPopAndSet replacement ring =
+    if size ring > 0 then Just (popAndSet replacement ring) else Nothing
+
 -- | Return a list of all elements in the ring.
 popAll :: RingBuffer e -> [e]
 popAll = unfoldr tryPop
+
+-- | Pop an element and maybe set a new value for the slot in the
+-- ring from where the element was popped.
+--
+-- This function accepts any 'Functor' as the result of the operation. It is
+-- used by the other @pop@ like functions.
+popAndModify :: (Functor f)
+             => (e -> f (Maybe e))
+             -> RingBuffer e
+             -> f (RingBuffer e)
+popAndModify modify ring@MkRingBuffer{ringBuffer,readIndex,writeIndex} =
+    updateRing <$> modify poppedElement
+  where
+    poppedElement = ringBuffer ! readIndex
+    updateRing maybeReplacement =
+        MkRingBuffer ringBuffer' readIndex' writeIndex'
+      where
+        ringBuffer' = maybe ringBuffer
+                            (\e' -> ringBuffer // [ (readIndex, e') ])
+                            maybeReplacement
+        readIndex' = (readIndex + 1) `rem` n
+        writeIndex' = let writeIndexMod = writeIndex `rem` n
+                      in
+                          if writeIndexMod == readIndex'
+                          then readIndex'
+                          else writeIndex
+    n = capacity ring
 
 -- | Return the number of elements in the ring, that were pushed but not popped,
 -- but never more than the 'capacity' of the ring.
@@ -149,4 +193,4 @@ capacity = rangeSize . bounds . ringBuffer
 -- | Return 'True' if the ring is not empty and a 'push' would change the result
 -- of a subsequent 'pop'.
 isFull :: RingBuffer e -> Bool
-isFull r = size r == capacity r
+isFull r = writeIndex r == readIndex r + capacity r

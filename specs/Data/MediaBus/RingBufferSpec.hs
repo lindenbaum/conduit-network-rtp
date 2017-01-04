@@ -1,3 +1,4 @@
+{-# LANGUAGE NoOverloadedStrings #-}
 module Data.MediaBus.RingBufferSpec ( spec ) where
 
 import           Data.MediaBus.RingBuffer
@@ -23,9 +24,17 @@ specificExamples = describe "specific examples" $ do
             let Just (e, r) = tryPop singletonRing
             e `shouldBe` e0
             size r `shouldBe` 0
+    describe "popAndSet" $ do
+        it "replaces the popped value in the ring" $
+          let ring = fromList ["something"]
+          in popAndSet "replacement" ring `shouldBe` ("something", fromList ["replacement"])
+    describe "tryPopAndSet" $ do
+        it "replaces the popped value in a non-empty ring" $
+          let ring = push "something" $ fromList [""]
+          in tryPopAndSet "replacement" ring `shouldBe` Just ("something", fromList ["replacement"])
     describe "pushAll" $ do
         it "pushes [1,2] into an empty ring such that pop returns 1" $
-          fst (pop (pushAll [1,2] emptyRing)) `shouldBe` 1
+            fst (pop (pushAll [ 1, 2 ] emptyRing)) `shouldBe` 1
     describe "size" $ do
         it "returns 0 for an initial, new ring buffer" $
             size emptyRing `shouldBe` 0
@@ -61,11 +70,12 @@ generalProperties = describe "general properties" $ do
         it "returns the number elements pushed but not popped (modulo the total ring size)" $
             property $
                 \(NonEmpty elementsToPush) (Positive ringSize) ->
-                    let empty :: RingBuffer Int
-                        empty = newRingBuffer ringSize
-                        filled = foldr push empty elementsToPush
+                    let ring :: RingBuffer Int
+                        ring = foldr push
+                                     (newRingBuffer ringSize)
+                                     elementsToPush
                     in
-                        size filled `shouldBe`
+                        size ring `shouldBe`
                             (length elementsToPush `min` ringSize)
         it "is always in the range: 0 .. capacity" $
             property $
@@ -93,19 +103,24 @@ generalProperties = describe "general properties" $ do
                 \ringOps e -> do
                     let ring :: RingBuffer Int
                         ring = runRingOps ringOps $ newRingBuffer 30
-                    not (isFull ring) ==> pushOut e ring `shouldBe` (Nothing, push e ring)
+                    not (isFull ring) ==> pushOut e ring `shouldBe`
+                        (Nothing, push e ring)
         it "returns '(Just lasteElement, ...)' when the ring is full" $
             property $
                 \ringOps e -> do
                     let ring :: RingBuffer Int
                         ring = runRingOps ringOps $ newRingBuffer 3
-                    isFull ring ==> pushOut e ring `shouldBe` (Just (fst $ pop ring), push e ring)
+                    isFull ring ==> pushOut e ring `shouldBe`
+                        (Just (fst $ pop ring), push e ring)
     describe "pop" $ do
         it "never returns a full ring buffer" $
-          property $ \ringOps1 ringOps2 ringOps3 (Positive ringSize) ->
-                       let ring = runRingOps (ringOps1 ++ ringOps2 ++ ringOps3) $ newRingBuffer ringSize
-                           ring :: RingBuffer Int
-                       in pop_ ring `shouldSatisfy` (not . isFull)
+            property $
+                \ringOps1 ringOps2 ringOps3 (Positive ringSize) ->
+                    let ring = runRingOps (ringOps1 ++ ringOps2 ++ ringOps3) $
+                            newRingBuffer ringSize
+                        ring :: RingBuffer Int
+                    in
+                        pop_ ring `shouldSatisfy` (not . isFull)
         it "returns the oldest of the most recent elements after any number of pushes" $
             property $
                 \(NonEmpty elementsToPush) (Positive ringSize) ->
@@ -114,8 +129,7 @@ generalProperties = describe "general properties" $ do
                         filled = foldr push empty elementsToPush
                         (popped, _) = pop filled
                     in
-                        popped `shouldBe`
-                            last (take ringSize elementsToPush)
+                        popped `shouldBe` last (take ringSize elementsToPush)
     describe "popAll" $
         it "returns the most recent elements after any number of pushes" $
             property $
@@ -126,8 +140,7 @@ generalProperties = describe "general properties" $ do
                         filled = foldr push empty elementsToPush
                         popped = popAll filled
                     in
-                        popped `shouldBe`
-                            reverse (take ringSize elementsToPush)
+                        popped `shouldBe` reverse (take ringSize elementsToPush)
     describe "pushAll" $
         it "pushAll xs ring == foldr push ring (reverse xs)" $
             property $
@@ -139,7 +152,10 @@ generalProperties = describe "general properties" $ do
 
 -- | Run a list of ring operations, where 'Just' corresponds to push and 'Nothing' to 'pop_'.
 runRingOps :: [Either e e] -> RingBuffer e -> RingBuffer e
-runRingOps = flip $ foldr f
+runRingOps ops ringBuffer =
+    foldr applyOp ringBuffer ops
   where
-    f (Right e) = push e
-    f (Left _) = pop_
+    applyOp (Right e) intermediateRingBuffer =
+        push e intermediateRingBuffer
+    applyOp (Left _) intermediateRingBuffer =
+        pop_ intermediateRingBuffer
