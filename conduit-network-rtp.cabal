@@ -24,8 +24,9 @@ library
                      , Data.Conduit.Audio.RtpAlawSource
                      , Data.Conduit.Audio.RtpPacket
                      , Data.Conduit.Audio.RtpSource
-                     , Data.MediaBus.Sequential
+                     , Data.MediaBus.AdaptiveQueue
                      , Data.MediaBus.RingBuffer
+                     , Data.MediaBus.Sequential
   default-language:    Haskell2010
   ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds
   default-extensions:  ApplicativeDo
@@ -89,7 +90,8 @@ test-suite tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      specs
   main-is:             Spec.hs
-  other-modules:       Data.MediaBus.RingBufferSpec
+  other-modules:       Data.MediaBus.AdaptiveQueueSpec
+                     , Data.MediaBus.RingBufferSpec
                      , Data.MediaBus.SequentialSpec
 
   default-language:    Haskell2010
