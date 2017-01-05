@@ -25,21 +25,31 @@ module Data.MediaBus.RingBuffer
     , size
     , capacity
     , isFull
+
+    -- ** Lenses
+    , startPosition
+    , endPosition
+    , firstElement
+    , lastElement
+    , nextStartPosition
+    , nextEndPosition
     ) where
 
+import           Control.Lens
 import           Data.Array
 import           Data.Default
-import           Text.Printf
+import           Data.Function (on)
+
+import           Data.List     (unfoldr)
 import           Data.Typeable
-import           Data.List             ( unfoldr )
-import           Data.Function         ( on )
-import           Data.Functor.Identity
+import           Data.Word
+import           Text.Printf
 
 -- | A __bounded__ /FIFO container/ with @O(1)@ time- and space complexity back insertion
 -- ('push') and front extraction ('pop').
 data RingBuffer e = MkRingBuffer { ringBuffer :: Array Int e
-                                 , readIndex  :: Int
-                                 , writeIndex :: Int
+                                 , startIndex :: Int
+                                 , endIndex   :: Int
                                  }
     deriving (Typeable)
 
@@ -49,14 +59,13 @@ instance Eq e =>
 
 instance (Typeable e, Show e) =>
          Show (RingBuffer e) where
-    show r@MkRingBuffer{ringBuffer,readIndex,writeIndex} =
-        printf "Ring buffer for up to %d elements of type: %s\n  size: %d\nreadIndex: %d\n  writeIndex: %d(%d)\n  elements: %s\n"
+    show r@MkRingBuffer{ringBuffer,startIndex,endIndex} =
+        printf "Ring buffer for up to %d elements of type: %s\n  size: %d\nstart: %d\n  end: %d\n  elements: %s\n"
                (capacity r)
                (show (typeRep r))
                (size r)
-               readIndex
-               (writeIndex `rem` capacity r)
-               writeIndex
+               startIndex
+               (endIndex `rem` capacity r)
                (show (assocs ringBuffer))
 
 -- | Create a new 'RingBuffer' with the given 'capacity'. All elements are
@@ -77,21 +86,14 @@ fromList initialElements =
         if n < 1 || n >= 2 ^ (28 :: Int)
         then error (printf "Invalid ring size: %d" n)
         else MkRingBuffer { ringBuffer = listArray (0, n - 1) initialElements
-                          , readIndex = 0
-                          , writeIndex = 0
+                          , startIndex = 0
+                          , endIndex = 0
                           }
 
 -- | Add an element to end of the ring. If the ring 'isFull' the oldest element
 -- will be overwritten and the next 'pop' will return the second oldest element.
 push :: e -> RingBuffer e -> RingBuffer e
-push e r@MkRingBuffer{ringBuffer,readIndex,writeIndex} =
-    MkRingBuffer ringBuffer' readIndex' writeIndex'
-  where
-    n = capacity r
-    ringBuffer' = ringBuffer // [ (writeIndex `rem` n, e) ]
-    readIndex' = if isFull r then (readIndex + 1) `rem` n else readIndex
-    writeIndex' = writeIndex + 1 -
-        if writeIndex + 1 >= 2 * n then n else 0
+push e = nextEndPosition . set lastElement e
 
 -- | Add an element to the ring if it's not full.
 tryPush :: e -> RingBuffer e -> Maybe (RingBuffer e)
@@ -154,37 +156,24 @@ popAndModify :: (Functor f)
              => (e -> f (Maybe e))
              -> RingBuffer e
              -> f (RingBuffer e)
-popAndModify modify ring@MkRingBuffer{ringBuffer,readIndex,writeIndex} =
-    updateRing <$> modify poppedElement
+popAndModify f ring = updateRing <$> f poppedElement
   where
-    poppedElement = ringBuffer ! readIndex
-    updateRing maybeReplacement =
-        MkRingBuffer ringBuffer' readIndex' writeIndex'
-      where
-        ringBuffer' = maybe ringBuffer
-                            (\e' -> ringBuffer // [ (readIndex, e') ])
-                            maybeReplacement
-        readIndex' = (readIndex + 1) `rem` n
-        writeIndex' = let writeIndexMod = writeIndex `rem` n
-                      in
-                          if writeIndexMod == readIndex'
-                          then readIndex'
-                          else writeIndex
-    n = capacity ring
+    poppedElement = ring ^. firstElement
+    updateRing = nextStartPosition . maybe ring (\e -> set firstElement e ring)
 
 -- | Return the number of elements in the ring, that were pushed but not popped,
 -- but never more than the 'capacity' of the ring.
 size :: RingBuffer e -> Int
-size r@MkRingBuffer{readIndex,writeIndex} =
+size r@MkRingBuffer{startIndex,endIndex} =
     let n = capacity r
     in
-        if writeIndex == readIndex + n
+        if endIndex == startIndex + n
         then n
-        else let writeIndexMod = writeIndex `rem` n
+        else let endIndexMod = endIndex `rem` n
              in
-                 if readIndex <= writeIndexMod
-                 then writeIndexMod - readIndex
-                 else n - readIndex + writeIndexMod
+                 if startIndex <= endIndexMod
+                 then endIndexMod - startIndex
+                 else n - startIndex + endIndexMod
 
 -- | Return the potential number of elements that could fit into the given ring.
 capacity :: RingBuffer e -> Int
@@ -193,4 +182,55 @@ capacity = rangeSize . bounds . ringBuffer
 -- | Return 'True' if the ring is not empty and a 'push' would change the result
 -- of a subsequent 'pop'.
 isFull :: RingBuffer e -> Bool
-isFull r = writeIndex r == readIndex r + capacity r
+isFull r = endIndex r == startIndex r + capacity r
+
+-- | Increase the 'startPosition', if necessary increase the 'endPosition' as
+-- well, such that 'push'ing never stores elementes before the 'pop' position as.
+nextStartPosition :: RingBuffer e -> RingBuffer e
+nextStartPosition ring@MkRingBuffer{startIndex,endIndex} =
+    ring { startIndex = startIndex', endIndex = endIndex' }
+  where
+    startIndex' = (startIndex + 1) `rem` n
+    endIndex' = let endIndexMod = endIndex `rem` n
+                in
+                    if endIndexMod == startIndex' then startIndex' else endIndex
+    n = capacity ring
+
+-- | Increase the 'endPosition', if necessary move the 'startPosition' along as
+-- well, such that 'pop'ping never skips over older ring elements.
+nextEndPosition :: RingBuffer e -> RingBuffer e
+nextEndPosition ring@MkRingBuffer{startIndex,endIndex} =
+    ring { startIndex = startIndex', endIndex = endIndex' }
+  where
+    n = capacity ring
+    startIndex' = if isFull ring then (startIndex + 1) `rem` n else startIndex
+    endIndex' = endIndex + 1 -
+        if endIndex + 1 >= 2 * n then n else 0
+
+-- | A 'Getter' for the position that points to the beginning of the elements
+-- written to the ring buffer.
+startPosition :: Getter (RingBuffer e) Int
+startPosition = to startIndex
+
+-- | A 'Getter' for the position that points to the first empty slot of the ring
+-- buffer.
+endPosition :: Getter (RingBuffer e) Int
+endPosition = to endIndex
+
+-- | A 'Lens' for the element at 'startPosition'.
+firstElement :: Lens' (RingBuffer e) e
+firstElement f ring@MkRingBuffer{ringBuffer,startIndex} =
+    replace <$> f (ringBuffer ! startIndex)
+  where
+    replace e = ring { ringBuffer = ringBuffer //
+                         [ (startIndex `rem` capacity ring, e) ]
+                     }
+
+-- | A 'Lens' for the element at 'endPosition'.
+lastElement :: Lens' (RingBuffer e) e
+lastElement f ring@MkRingBuffer{ringBuffer,endIndex} =
+    replace <$> f (ringBuffer ! endIndex)
+  where
+    replace e = ring { ringBuffer = ringBuffer //
+                         [ (endIndex `rem` capacity ring, e) ]
+                     }
