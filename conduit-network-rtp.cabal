@@ -24,6 +24,7 @@ library
                      , Data.Conduit.Audio.RtpAlawSource
                      , Data.Conduit.Audio.RtpPacket
                      , Data.Conduit.Audio.RtpSource
+                     , Data.MediaBus.AdaptiveQueue
                      , Data.MediaBus.BiIndex
                      , Data.MediaBus.Sequential
                      , Data.MediaBus.RingBuffer
@@ -93,7 +94,8 @@ test-suite tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      specs
   main-is:             Spec.hs
-  other-modules:       Data.MediaBus.BiIndexSpec
+  other-modules:       Data.MediaBus.AdaptiveQueueSpec
+                     , Data.MediaBus.BiIndexSpec
                      , Data.MediaBus.RingBufferSpec
                      , Data.MediaBus.SequentialSpec
                      , Data.MediaBus.RtpSpec
