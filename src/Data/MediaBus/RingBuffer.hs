@@ -1,7 +1,5 @@
 -- | A circular buffer with a focus on high performance(TODO), useful e.g. for
 -- bounded queues, e.g. in multimedia applications.
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE RankNTypes     #-}
 
 module Data.MediaBus.RingBuffer
     ( -- * Ring Buffer Data Type
@@ -40,10 +38,8 @@ import           Control.Lens
 import           Data.Array
 import           Data.Default
 import           Data.Function (on)
-
 import           Data.List     (unfoldr)
 import           Data.Typeable
-
 import           Text.Printf
 
 -- | A __bounded__ /FIFO container/ with @O(1)@ time- and space complexity back insertion
@@ -53,6 +49,9 @@ data RingBuffer e = MkRingBuffer { ringBuffer :: Array Int e
                                  , size       :: Int
                                  }
     deriving (Typeable)
+
+instance Foldable RingBuffer where
+  foldr f z = foldr f z . popAll
 
 instance Eq e =>
          Eq (RingBuffer e) where

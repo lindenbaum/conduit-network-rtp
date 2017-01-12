@@ -1,10 +1,13 @@
 {-# LANGUAGE NoOverloadedStrings #-}
+
 module Data.MediaBus.RingBufferSpec ( spec ) where
 
 import           Data.MediaBus.RingBuffer
 import           Test.Hspec
 import           Test.QuickCheck
 import           Data.Maybe
+import           Data.Monoid
+import           Data.Foldable            ( fold, foldMap )
 
 spec :: Spec
 spec = describe "RingBuffer" $ do
@@ -26,12 +29,16 @@ specificExamples = describe "specific examples" $ do
             size r `shouldBe` 0
     describe "popAndSet" $ do
         it "replaces the popped value in the ring" $
-          let ring = fromList ["something"]
-          in popAndSet "replacement" ring `shouldBe` ("something", fromList ["replacement"])
+            let ring = fromList [ "something" ]
+            in
+                popAndSet "replacement" ring `shouldBe`
+                    ("something", fromList [ "replacement" ])
     describe "tryPopAndSet" $ do
         it "replaces the popped value in a non-empty ring" $
-          let ring = push "something" $ fromList [""]
-          in tryPopAndSet "replacement" ring `shouldBe` Just ("something", fromList ["replacement"])
+            let ring = push "something" $ fromList [ "" ]
+            in
+                tryPopAndSet "replacement" ring `shouldBe`
+                    Just ("something", fromList [ "replacement" ])
     describe "pushAll" $ do
         it "pushes [1,2] into an empty ring such that pop returns 1" $
             fst (pop (pushAll [ 1, 2 ] emptyRing)) `shouldBe` 1
@@ -58,6 +65,37 @@ specificExamples = describe "specific examples" $ do
             size r `shouldBe` 0
 
 generalProperties = describe "general properties" $ do
+    describe "Foldable instance" $ do
+        it "foldr f z t == appEndo (foldMap (Endo . f) t) z" $
+            property $
+                \(Positive ringSize) ringOps ->
+                    let t :: RingBuffer Int
+                        t = runRingOps ringOps $ newRingBuffer ringSize
+                        f = (+)
+                        z = 0
+                    in
+                        foldr f z t == appEndo (foldMap (Endo . f) t) z
+        it "foldl f z t == appEndo (getDual (foldMap (Dual . Endo . flip f) t)) z" $
+            property $
+                \(Positive ringSize) ringOps ->
+                    let t :: RingBuffer Int
+                        t = runRingOps ringOps $ newRingBuffer ringSize
+                        f = (+) :: Int -> Int -> Int
+                        z = 0 :: Int
+                    in
+                        foldl f z t ==
+                            appEndo (getDual (foldMap (Dual . Endo . flip f) t))
+                                    z
+        it "fold = foldMap id" $
+            property $
+                \(Positive ringSize) ringOps ->
+                    let t :: RingBuffer (First Int)
+                        t = runRingOps ringOps $ newRingBuffer ringSize
+                        f = (+) :: Int -> Int -> Int
+                        z = 0 :: Int
+                    in
+                        fold t == foldMap id t
+
     describe "capacity" $
         it "always returns the parameter given to 'newRingBuffer'" $
             property $
@@ -159,3 +197,7 @@ runRingOps ops ringBuffer =
         push e intermediateRingBuffer
     applyOp (Left _) intermediateRingBuffer =
         pop_ intermediateRingBuffer
+
+instance Arbitrary e =>
+         Arbitrary (First e) where
+    arbitrary = First <$> arbitrary
