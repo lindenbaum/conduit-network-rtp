@@ -2,7 +2,7 @@
 -- such that after every 'Num' or 'Integral' operation on the 'BiIndex' the
 -- 'major' and 'minor' indices update consistently.
 --
--- More formally, they are assoiative:
+-- More formally, they are distributive:
 --   @major (b & baseIndex +~ x) == major b + x `modRange` majorRange b@
 --   @minor (over baseIndex (+ x) b)  == minor b + x `modRange` minorRange b@
 --
