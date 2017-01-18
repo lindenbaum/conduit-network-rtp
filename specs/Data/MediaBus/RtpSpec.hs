@@ -53,6 +53,8 @@ sequentialSpec = do
 --      --> ssrcDemux :: Monad m => (forall s. Default s => Ssrc -> Conduit MediaData (StateT s m) MediaData)
 --                               -> Conduit MediaData m MediaData
 -- -----------------------------------------------------
+
+--
 type RtpMediaStreamEvent = MediaStreamEvent RtpSsrc RtpSequence RtpClock
 
 -- mkRtpMediaStreamEvent :: RtpSequenceNumber -> RtpTimestamp -> RtpPayloadType -> RtpMediaStreamEvent
@@ -118,9 +120,9 @@ data RawRtpPacket = MkRawRtpPacket { rawRtpSequenceNumber :: RtpSequenceNumber
 --      activity detection, noise reduction, resampling, mix/combine with other
 --      stream media buffers
 --
-data StreamBufferQueue tStream tPacket p =
-      MkStreamBufferQueue { payloadQueue    :: Set.Set (Packet (AbsolutePosition tPacket) p)
-                          , firstPacketTime :: ReferencePosition tPacket
+data StreamBufferQueue tStream tSample p =
+      MkStreamBufferQueue { payloadQueue    :: Set.Set (Sample (AbsolutePosition tSample) p)
+                          , firstSampleTime :: ReferencePosition tSample
                           , streamReference :: ReferencePosition tStream
                           }
 
@@ -138,12 +140,18 @@ newtype SessionSequenceNumber = MkSessionSequenceNumber Word64
 -- -----------------------------------------------------
 data MediaStreamEvent id s p =
       Reconfigure id (ReferencePosition s)
-    | Process id (Packet s p)
+    | Process id (Sample s p)
     | Terminate id
     deriving (Show)
 
-data Packet s p = MkPacket { sequenceNumber :: s
-                           , payload        :: p
+
+
+-- | A 'Sample' can be anything that has a start time and is exactly one time
+-- unit long, it can respresent anything ranging from an audio buffer with 20ms
+-- of audio to a single pulse coded audio sample, of course it could also be a
+-- video frame or a chat message.
+data Sample t s = MkSample { presentationTime :: t
+                           , sampleData       :: s
                            }
     deriving (Show)
 
@@ -224,3 +232,14 @@ clockDiffTime :: (Integral t, IsSequential t)
               -> NominalDiffTime
 clockDiffTime c t1 t0 = fromIntegral (diffPositions (tickReference c) t1 t0) *
     tickDuration c
+
+-- --------------------------------------
+
+data Continous t a = Continous { payload :: a }
+                   | Interrupted { gapStart    :: t
+                                 , gapDuration :: t
+                                 , payload     :: a
+                                 }
+                   deriving (Show)
+
+-- gapDetector :: (MonadState t m, Eq t, Temporal t a) => Clock t -> a -> m (Continous t a)
