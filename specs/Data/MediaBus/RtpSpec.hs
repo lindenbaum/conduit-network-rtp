@@ -100,8 +100,9 @@ type UTCSyncSample a = SynchronizedTo (ReferencePosition UTCTime) (Sample DiffTi
 type RawDataNetworkSource = NetworkSource RawData
 
 -- -----------------------------------------------------
--- * Media Data Processing
+-- * Media Data Synchronization
 -- -----------------------------------------------------
+
 reorder :: (Ord t, Monad m) => Int -> Conduit (Sample t c) m (Sample t c)
 reorder windowSize = go Set.empty Nothing
   where
@@ -125,6 +126,11 @@ reorder windowSize = go Set.empty Nothing
                         >> go (maybe sampleQueue' snd mMinView)
                               (maybe mMinTS (Just . presentationTime . fst) mMinView)
                     else go sampleQueue' mMinTS
+
+synchronizeTo :: (Monad m)
+              => clk2
+              -> Conduit (SynchronizedTo clk1 (Sample t1 c)) m (Sample t2 c)
+synchronizeTo = undefined
 
 -- -----------------------------------------------------
 -- * Media Data Processing Base Types
