@@ -1,17 +1,18 @@
 module Data.MediaBus.RtpSpec ( spec ) where
 
--- import           Data.Conduit
+import           Data.Conduit
+import           Data.Conduit.Lift
 import           Data.Word
 import           Data.Int
 import           Test.Hspec
 import           Test.QuickCheck
-import           Data.Function
 import           Data.Time.Clock
+import           Data.Ix
+import           Data.Function
 -- -- import           Data.Default
--- import Data.Conduit.Lift
--- -- import           Control.Monad.State.Strict
-import           Data.Ord        ( Ordering, comparing )
-import qualified Data.Set        as Set
+import           Control.Monad.State.Strict
+import qualified Data.Set                   as Set
+import           GHC.TypeLits
 
 spec :: Spec
 spec = do
@@ -36,115 +37,120 @@ spec = do
 
 sequentialSpec :: Spec
 sequentialSpec = do
-    describe "Monotonic instance" $ do
+    describe "relative sequences" $ do
         it "relativePosition ref . absolutePosition ref == id" $
             property $
-                \(ref :: ReferencePosition (Monotonic Int8)) v ->
+                \(ref :: ReferencePosition Int8) v ->
                     relativePosition ref (absolutePosition ref v) `shouldBe`
                         v
 
--- =================================
--- Network Driven Rtp:
--- per received network packet:
---   Assign NTP timestamp
---   stupid simple SSRC handling
---      --> manage a list of MediaConduits one for each SSRC
---      --> maybe enforce an upper limit on the number of concurrent SSRCs (maybe 2)
---      --> ssrcDemux :: Monad m => (forall s. Default s => Ssrc -> Conduit MediaData (StateT s m) MediaData)
---                               -> Conduit MediaData m MediaData
--- -----------------------------------------------------
-
---
-type RtpMediaStreamEvent = MediaStreamEvent RtpSsrc RtpSequence RtpClock
-
--- mkRtpMediaStreamEvent :: RtpSequenceNumber -> RtpTimestamp -> RtpPayloadType -> RtpMediaStreamEvent
--- mkRtpMediaStreamEvent = MkMediaStreamEvent
--- type RtpMediaEvent = MediaStream RtpSsrc RtpSequence RtpClock
--- mkRtpMediaStream :: RtpSsrc -> RtpSequence -> RtpClock -> RtpMediaStream
--- mkRtpMediaStream = MkMediaStream
+-- ----------------------------------------------------------------------
+-- * Rtp sources
+-- ----------------------------------------------------------------------
 newtype RtpSsrc = MkRtpSsrc Word32
     deriving (Show, Eq)
 
-type RtpSequence = ReferencePosition RtpSequenceNumber
+newtype RtpSequence = MkRtpSequence Word16
+    deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq)
 
-newtype RtpSequenceNumber = MkRtpSequenceNumber (Monotonic Word16)
-    deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq, IsSequential)
+newtype RtpTimestamp = MkRtpTimestamp Word32
+    deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq)
 
-mkRtpSequence :: RtpSequenceNumber -> RtpSequence
-mkRtpSequence = MkReferencePosition
+data RtpPayload = MkRtpPayload { rtpPayload     :: String
+                               , rtpPayloadType :: RtpPayloadType
+                               }
+    deriving Show
 
-type RtpClock = Clock RtpTimestamp
+newtype RtpPayloadType = MkRtpPayloadType { fromRtpPayloadType :: Word8 }
+    deriving (Show, Eq, Num)
 
-newtype RtpTimestamp = MkRtpTimestamp (Monotonic Word32)
-    deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq, IsSequential)
-
-mkRtpClock8kHz :: RtpTimestamp -> RtpClock
-mkRtpClock8kHz = fromRate 8000
-
-data RtpPayloadType = G711U | G711A
-    deriving (Show, Eq)
-
-data RawRtpPacket = MkRawRtpPacket { rawRtpSequenceNumber :: RtpSequenceNumber
+data RawRtpPacket = MkRawRtpPacket { rawRtpSequenceNumber :: RtpSequence
                                    , rawRtpTimestamp      :: RtpTimestamp
                                    , rawRtpSsrc           :: RtpSsrc
-                                   , rawRtpPayloadType    :: RtpPayloadType
-                                   , rawRtpPayload        :: String
+                                   , rawRtpPayload        :: RtpPayload
                                    }
     deriving Show
 
--- rawRtpToEvent :: RawRtpPacket -> State RtpMediaStreamEvent
--- -----------------------------------------------------
---
--- Order of RTP packets:
--- Same SSRC: order by Rtp timestamp
--- Different SSRC order by Ntp timestamp
---
--- stream buffer queue
---   components:
---    * the PacketReference
---    * a bounded payload queue orderd by stream time stamp
---    * the global start time stamp of the stream
---
---   operations:
---    * gather media data packets
---    * generate missing elements
---
--- media packet:
---  components:
---    * sequence number
---    * timestamp
---    * media data payload
---
---  operations:
---    * filtering, transcoding, tone generation, dtmf/tone detection, voice
---      activity detection, noise reduction, resampling, mix/combine with other
---      stream media buffers
---
-data StreamBufferQueue tStream tSample p =
-      MkStreamBufferQueue { payloadQueue    :: Set.Set (Sample (AbsolutePosition tSample) p)
-                          , firstSampleTime :: ReferencePosition tSample
-                          , streamReference :: ReferencePosition tStream
-                          }
+type RawRtpPacketSource = NetworkSource RawRtpPacket
 
-newtype SessionId = MkSessionId (Word64, Word64)
-    deriving (Show, Ord, Eq)
+data RtpClockReference =
+      RtpTimestampReference Clock (ReferencePosition RtpTimestamp)
+    | RtpSequenceReference (ReferencePosition RtpSequence)
+    deriving Show
 
-newtype SessionTimestamp = MkSessionTimestamp Word64
-    deriving (Show, Ord, Eq, Num, Integral, Enum, Real, Bounded)
+type RtpSample = Sample (RtpSequence, RtpTimestamp) RtpPayload
 
-newtype SessionSequenceNumber = MkSessionSequenceNumber Word64
-    deriving (Show, Ord, Eq, Num, Integral, Enum, Real, Bounded)
+type SyncRtpSample = SynchronizedTo RtpClockReference RtpSample
+
+type SyncRtpSource = IdentifiedBy RtpSsrc SyncRtpSample
+
+-- ----------------------------------------------------------------------
+-- * Raw network sources
+-- ----------------------------------------------------------------------
+data IpPort
+
+data NtpTime
+
+data RawData
+
+type NetworkSource a = IdentifiedBy IpPort (UTCSyncSample a)
+
+type UTCSyncSample a = SynchronizedTo (ReferencePosition UTCTime) (Sample DiffTime a)
+
+type RawDataNetworkSource = NetworkSource RawData
 
 -- -----------------------------------------------------
+-- * Media Data Processing
+-- -----------------------------------------------------
+reorder :: (Ord t, Monad m) => Int -> Conduit (Sample t c) m (Sample t c)
+reorder windowSize = go Set.empty Nothing
+  where
+    go :: (Ord t, Monad m)
+       => Set.Set (Sample t c)
+       -> Maybe t
+       -> Conduit (Sample t c) m (Sample t c)
+    go sampleQueue mMinTS = do
+        msample <- await
+        case msample of
+            Nothing -> mapM_ yield sampleQueue
+            Just sample -> when (maybe True (presentationTime sample >) mMinTS) $
+                let sampleQueue' = Set.insert sample sampleQueue
+                    mMinView = Set.minView sampleQueue'
+                in
+                    if Set.size sampleQueue >= windowSize
+                    then mapM_ (yield . fst) mMinView
+                        >> go (maybe sampleQueue' snd mMinView)
+                              (maybe mMinTS (Just . presentationTime . fst) mMinView)
+                    else go sampleQueue' mMinTS
 
 -- -----------------------------------------------------
-data MediaStreamEvent id s p =
-      Reconfigure id (ReferencePosition s)
-    | Process id (Sample s p)
-    | Terminate id
+-- * Media Data Processing Base Types
+-- -----------------------------------------------------
+-- | 'Event's for things that need to be initialized with a 'Clock' to
+-- synchronize to.
+data SynchronizedTo c t =
+      SynchronizeTo c
+    | Synchronized t
+    deriving Show
+
+instance Functor (SynchronizedTo c) where
+    fmap _ (SynchronizeTo c) =
+        SynchronizeTo c
+    fmap f (Synchronized x) =
+        Synchronized (f x)
+
+type Clocked p = SynchronizedTo Clock p
+
+-- | Things that can be uniquely identified by a looking at a (much simpler)
+-- representation, the 'identity'.
+data IdentifiedBy i c = MkIdentifiedBy { identifier   :: i
+                                       , unIdentified :: c
+                                       }
     deriving (Show)
 
-
+instance Functor (IdentifiedBy i) where
+    fmap f (MkIdentifiedBy i c) =
+        MkIdentifiedBy i (f c)
 
 -- | A 'Sample' can be anything that has a start time and is exactly one time
 -- unit long, it can respresent anything ranging from an audio buffer with 20ms
@@ -155,91 +161,90 @@ data Sample t s = MkSample { presentationTime :: t
                            }
     deriving (Show)
 
+instance Ord t =>
+         Ord (Sample t s) where
+    compare = compare `on` presentationTime
+
+instance Eq t =>
+         Eq (Sample t s) where
+    (==) = (==) `on` presentationTime
+
+instance Functor (Sample t) where
+    fmap f (MkSample t x) = MkSample t (f x)
+
+-- | Indication of a state change in a stream
+data Event a b = Init a
+               | Handle b
+               | Terminate
+    deriving (Show)
+
+instance Functor (Event a) where
+    fmap f (Handle x) = Handle (f x)
+    fmap _f (Init x) = Init x
+    fmap _f Terminate = Terminate
+
+-- -----------------------------------------------------
+-- * Dealing with gaps in media streams
+-- -----------------------------------------------------
+-- | Differentiate between continuous and non-continous occurences of something.
+data Discontinous a b = Gap a
+                      | Continue b
+    deriving (Show)
+
+instance Functor (Discontinous a) where
+    fmap f (Continue x) = Continue (f x)
+    fmap _f (Gap x) = Gap x
+
 -- -------------------------------------
-class IsSequential s where
-    absolutePosition :: ReferencePosition s -> s -> AbsolutePosition s
-    relativePosition :: ReferencePosition s -> AbsolutePosition s -> s
-    comparePositions :: ReferencePosition s -> s -> s -> Ordering
-    diffPositions :: ReferencePosition s -> s -> s -> AbsolutePosition s
-
--- --------------------------------------
-instance (IsSequential s, IsSequential t) =>
-         IsSequential (s, t) where
-    absolutePosition (MkReferencePosition (sr, tr)) (s, t) =
-        let MkAbsolute sPos = absolutePosition (MkReferencePosition sr) s
-            MkAbsolute tPos = absolutePosition (MkReferencePosition tr) t
-        in
-            MkAbsolute (sPos, tPos)
-    comparePositions (MkReferencePosition (sr, tr)) (xs, xt) (ys, yt) =
-        let cmpS = comparePositions (MkReferencePosition sr) xs ys
-            cmpT = comparePositions (MkReferencePosition tr) xt yt
-        in
-            compare (cmpS, EQ) (EQ, cmpT)
-    diffPositions (MkReferencePosition (sr, tr)) (xs, xt) (ys, yt) =
-        MkAbsolute ( fromAbsolutePosition $
-                       diffPositions (MkReferencePosition sr) xs ys
-                   , fromAbsolutePosition $
-                       diffPositions (MkReferencePosition tr) xt yt
-                   )
-    relativePosition (MkReferencePosition (xsr, xtr)) (MkAbsolute (ys, yt)) =
-        ( relativePosition (MkReferencePosition xsr) (MkAbsolute ys)
-        , relativePosition (MkReferencePosition xtr) (MkAbsolute yt)
-        )
-
--- --------------------------------------
 newtype ReferencePosition s = MkReferencePosition { referenceValue :: s }
     deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq, Arbitrary)
 
-newtype AbsolutePosition s = MkAbsolute { fromAbsolutePosition :: s }
+newtype RelativePosition s = MkRelativePosition { fromRelativePosition :: s }
     deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq, Arbitrary)
 
--- -------------------------------------
-newtype Monotonic i = MkMonotonic i
-    deriving (Eq, Show, Ord, Num, Real, Bounded, Enum, Integral, Arbitrary)
+absolutePosition :: (Integral s, Bounded s)
+                 => ReferencePosition s
+                 -> RelativePosition s
+                 -> s
+absolutePosition MkReferencePosition{referenceValue} MkRelativePosition{fromRelativePosition} =
+    fromIntegral $
+        if fromRelativePosition < referenceValue
+        then maxBound - (referenceValue - fromRelativePosition)
+        else fromRelativePosition - referenceValue
 
-instance (Bounded i, Integral i) =>
-         IsSequential (Monotonic i) where
-    absolutePosition (MkReferencePosition (MkMonotonic referenceValue)) (MkMonotonic x) =
-        fromIntegral $
-            if x < referenceValue
-            then maxBound - (referenceValue - x)
-            else x - referenceValue
-    comparePositions = comparing . absolutePosition
-    diffPositions s = (-) `on` absolutePosition s
-    relativePosition y xr = fromIntegral y + fromIntegral xr
+relativePosition :: (Integral s)
+                 => ReferencePosition s
+                 -> s
+                 -> RelativePosition s
+relativePosition y xr = MkRelativePosition (fromIntegral y + fromIntegral xr)
 
 -- --------------------------------------
-data Clock t = MkClock { tickReference :: ReferencePosition t
-                       , tickDuration  :: NominalDiffTime
-                       }
+-- --------------------------------------
+class IsClock c where
+    tickDuration :: c -> NominalDiffTime
+
+toRate :: (IsClock c, Integral t) => c -> t
+toRate c = round (recip (tickDuration c))
+
+timeOf :: (IsClock c, Integral t) => c -> t -> NominalDiffTime
+timeOf c t = fromIntegral t * tickDuration c
+
+clockDiffTime :: (IsClock c, Integral t) => c -> t -> t -> NominalDiffTime
+clockDiffTime c t1 t0 = let d = tickDuration c
+                        in
+                            fromInteger (toInteger (t1 - t0)) * d
+
+-- --------------------------------------
+data StaticClock (rate :: Nat) = MkStaticClock
+
+instance (KnownNat rate) =>
+         IsClock (StaticClock rate) where
+    tickDuration = fromInteger . natVal
+
+-- --------------------------------------
+newtype Clock = MkClock NominalDiffTime
     deriving (Show)
 
-newtype ClockRate = MkClockRate Word64
-    deriving (Show, Integral, Enum, Num, Real, Ord, Eq)
-
-fromRate :: ClockRate -> t -> Clock t
-fromRate ticksPerSecond ref =
-    MkClock (MkReferencePosition ref) (1 / fromIntegral ticksPerSecond)
-
-timeOf :: (Integral t, IsSequential t) => Clock t -> t -> NominalDiffTime
-timeOf c t = fromIntegral (absolutePosition (tickReference c) t) *
-    tickDuration c
-
-clockDiffTime :: (Integral t, IsSequential t)
-              => Clock t
-              -> t
-              -> t
-              -> NominalDiffTime
-clockDiffTime c t1 t0 = fromIntegral (diffPositions (tickReference c) t1 t0) *
-    tickDuration c
-
--- --------------------------------------
-
-data Continous t a = Continous { payload :: a }
-                   | Interrupted { gapStart    :: t
-                                 , gapDuration :: t
-                                 , payload     :: a
-                                 }
-                   deriving (Show)
-
--- gapDetector :: (MonadState t m, Eq t, Temporal t a) => Clock t -> a -> m (Continous t a)
+fromRate :: Integral t => t -> Clock
+fromRate ticksPerSecond =
+    MkClock (1 / fromIntegral ticksPerSecond)
