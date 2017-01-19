@@ -113,7 +113,10 @@ reorder windowSize = go Set.empty Nothing
         msample <- await
         case msample of
             Nothing -> mapM_ yield sampleQueue
-            Just sample -> when (maybe True (presentationTime sample >) mMinTS) $
+            Just sample ->
+              if  maybe False (presentationTime sample <=) mMinTS then
+                go sampleQueue mMinTS
+              else
                 let sampleQueue' = Set.insert sample sampleQueue
                     mMinView = Set.minView sampleQueue'
                 in
