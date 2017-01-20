@@ -1,22 +1,23 @@
 module Data.MediaBus.RtpSpec ( spec ) where
 
 import           Data.Conduit
+import           Data.Conduit.List          ( consume, sourceList )
 import           Data.Conduit.Lift
+import           Data.Function
+import           Data.List                  ( sort )
+import qualified Data.Set                   as Set
 import           Data.Word
-import           Data.Int
 import           Test.Hspec
 import           Test.QuickCheck
 import           Data.Time.Clock
-import           Data.Ix
-import           Data.Function
 -- -- import           Data.Default
 import           Control.Monad.State.Strict
-import qualified Data.Set                   as Set
+import           Control.Lens
 import           GHC.TypeLits
 
 spec :: Spec
 spec = do
-    sequentialSpec
+    reorderSpec
     describe "incoming packet handling" $ do
         describe "packets with unknown SSRC" $ do
             it "just pushes packets to the end of the ring" $
@@ -35,14 +36,38 @@ spec = do
         it "returns all packets" $ property $ True
         it "fills the gaps with packet loss indications" $ property $ True
 
-sequentialSpec :: Spec
-sequentialSpec = do
-    describe "relative sequences" $ do
-        it "relativePosition ref . absolutePosition ref == id" $
-            property $
-                \(ref :: ReferencePosition Int8) v ->
-                    relativePosition ref (absolutePosition ref v) `shouldBe`
-                        v
+reorderSpec :: Spec
+reorderSpec = describe "reorder" $ do
+    it "the output is always monotonic increasing" $
+        property reorderOutputIsMonotoneIncreasing
+    it "if the input is non-empty the output is too" $
+        property reorderOutputOnlyEmptyIfInputEmpty
+
+reorderOutputIsMonotoneIncreasing :: [Word8] -> Positive Int -> Expectation
+reorderOutputIsMonotoneIncreasing inSamples (Positive windowSize) =
+    let outSamples = runConduitPure (sourceList inSamples .|
+                                         reorder windowSize id .|
+                                         consume)
+    in
+        outSamples `shouldBe` sort outSamples
+
+reorderOutputOnlyEmptyIfInputEmpty :: [Word8] -> Positive Int -> Expectation
+reorderOutputOnlyEmptyIfInputEmpty inSamples (Positive windowSize) =
+    let outSamples = runConduitPure (sourceList inSamples .|
+                                         reorder windowSize id .|
+                                         consume)
+    in
+        null inSamples `shouldBe` null outSamples
+
+resynchronizeToSpec :: Spec
+resynchronizeToSpec = describe "resynchronizeTo" $
+    it "resynchronizeTo produces dense, strictly monotonic output, for dense, strictly monotonic input" $
+        property resynchronizeToIsMonotone
+
+resynchronizeToIsMonotone :: [(Word8, Word8)] -> Expectation
+resynchronizeToIsMonotone ranges =
+
+
 
 -- ----------------------------------------------------------------------
 -- * Rtp sources
@@ -74,11 +99,13 @@ data RawRtpPacket = MkRawRtpPacket { rawRtpSequenceNumber :: RtpSequence
 type RawRtpPacketSource = NetworkSource RawRtpPacket
 
 data RtpClockReference =
-      RtpTimestampReference Clock (ReferencePosition RtpTimestamp)
-    | RtpSequenceReference (ReferencePosition RtpSequence)
+      RtpTimestampReference Clock (Offset RtpTimestamp)
+    | RtpSequenceReference (Offset RtpSequence)
     deriving Show
 
 type RtpSample = Sample (RtpSequence, RtpTimestamp) RtpPayload
+
+newtype OnRtpSequence = MkOnRtpSequence { unOnRtpSequence :: RtpSample }
 
 type SyncRtpSample = SynchronizedTo RtpClockReference RtpSample
 
@@ -87,50 +114,72 @@ type SyncRtpSource = IdentifiedBy RtpSsrc SyncRtpSample
 -- ----------------------------------------------------------------------
 -- * Raw network sources
 -- ----------------------------------------------------------------------
-data IpPort
+data IpPort = MkIpPort
 
-data NtpTime
+data NtpTime = MkNtpTime
 
-data RawData
+data RawData = MkRawData
 
 type NetworkSource a = IdentifiedBy IpPort (UTCSyncSample a)
 
-type UTCSyncSample a = SynchronizedTo (ReferencePosition UTCTime) (Sample DiffTime a)
+type UTCSyncSample a = SynchronizedTo (Offset UTCTime) (Sample DiffTime a)
 
 type RawDataNetworkSource = NetworkSource RawData
 
 -- -----------------------------------------------------
 -- * Media Data Synchronization
 -- -----------------------------------------------------
-
-reorder :: (Ord t, Monad m) => Int -> Conduit (Sample t c) m (Sample t c)
-reorder windowSize = go Set.empty Nothing
+-- | Buffer incoming samples in a queue of the given size and output them
+-- ordered by 'presentationTime'. The output is guaranteed to be monotone
+-- increasing.
+reorder :: (Integral t, Monad m) => Int -> (a -> t)  -> Conduit a m a
+reorder windowSize indexOf =
+    go Set.empty Nothing
   where
-    go :: (Ord t, Monad m)
-       => Set.Set (Sample t c)
-       -> Maybe t
-       -> Conduit (Sample t c) m (Sample t c)
-    go sampleQueue mMinTS = do
-        msample <- await
-        case msample of
-            Nothing -> mapM_ yield sampleQueue
-            Just sample ->
-              if  maybe False (presentationTime sample <=) mMinTS then
-                go sampleQueue mMinTS
-              else
-                let sampleQueue' = Set.insert sample sampleQueue
-                    mMinView = Set.minView sampleQueue'
-                in
-                    if Set.size sampleQueue >= windowSize
-                    then mapM_ (yield . fst) mMinView
-                        >> go (maybe sampleQueue' snd mMinView)
-                              (maybe mMinTS (Just . presentationTime . fst) mMinView)
-                    else go sampleQueue' mMinTS
+    go queue minIndex = do
+        mx <- await
+        case mx of
+            Nothing -> mapM_ (yield . _sampleData) queue
+            Just x -> if maybe False (indexOf x <=) minIndex
+                      then go queue minIndex
+                      else let queue' = Set.insert (MkSample (indexOf x) x)
+                                                   queue
+                               mMinView = Set.minView queue'
+                           in
+                               if Set.size queue >= windowSize
+                               then mapM_ (yield . _sampleData . fst) mMinView
+                                   >> go (maybe queue' snd mMinView)
+                                         (maybe minIndex
+                                                (Just .
+                                                     _presentationTime . fst)
+                                                mMinView)
+                               else go queue' minIndex
 
-synchronizeTo :: (Monad m)
-              => clk2
-              -> Conduit (SynchronizedTo clk1 (Sample t1 c)) m (Sample t2 c)
-synchronizeTo = undefined
+-- | Synchronized version of `reorder`. It
+-- | Adapt the clock/timetstamp to another /outter/ static clock. Incoming
+--  'SynchronizeTo' packets are processed, the output is always synchronous
+--  to the given clock.
+resynchronizeTo :: forall m tIn tOut pIn pOut.
+                (Monad m, Integral tIn, Integral tOut)
+                => Offset tOut
+                -> (forall pIn' tIn'. Lens pIn pIn' tIn tIn')
+                -> Conduit (SynchronizedTo (Offset tIn) pIn) m (SynchronizedTo (Offset tOut) pOut)
+resynchronizeTo tOutRef timestampIn =
+    await >>= maybe (return ()) (begin >=> (`evalStateC` awaitForever go))
+  where
+    begin p@(Synchronized pIn) = do
+        let tInRef = MkOffset (fromIntegral (view timestampIn pIn))
+        leftover p
+        return tInRef
+    begin (SynchronizeTo tInRef) =
+        return tInRef
+
+    go (Synchronized pIn) = do
+        MkOffset tInRef <- get
+        let toTOut tIn = fromIntegral (tIn - tInRef) + fromOffset tOutRef
+        yield (Synchronized (over timestampIn toTOut pIn))
+    go (SynchronizeTo tInRef) =
+        put tInRef
 
 -- -----------------------------------------------------
 -- * Media Data Processing Base Types
@@ -148,8 +197,6 @@ instance Functor (SynchronizedTo c) where
     fmap f (Synchronized x) =
         Synchronized (f x)
 
-type Clocked p = SynchronizedTo Clock p
-
 -- | Things that can be uniquely identified by a looking at a (much simpler)
 -- representation, the 'identity'.
 data IdentifiedBy i c = MkIdentifiedBy { identifier   :: i
@@ -165,18 +212,18 @@ instance Functor (IdentifiedBy i) where
 -- unit long, it can respresent anything ranging from an audio buffer with 20ms
 -- of audio to a single pulse coded audio sample, of course it could also be a
 -- video frame or a chat message.
-data Sample t s = MkSample { presentationTime :: t
-                           , sampleData       :: s
+data Sample t s = MkSample { _presentationTime :: t
+                           , _sampleData       :: s
                            }
     deriving (Show)
 
-instance Ord t =>
-         Ord (Sample t s) where
-    compare = compare `on` presentationTime
+instance Eq i =>
+         Eq (Sample i c) where
+    (==) = (==) `on` _presentationTime
 
-instance Eq t =>
-         Eq (Sample t s) where
-    (==) = (==) `on` presentationTime
+instance Ord i =>
+         Ord (Sample i c) where
+    compare = compare `on` _presentationTime
 
 instance Functor (Sample t) where
     fmap f (MkSample t x) = MkSample t (f x)
@@ -205,43 +252,23 @@ instance Functor (Discontinous a) where
     fmap _f (Gap x) = Gap x
 
 -- -------------------------------------
-newtype ReferencePosition s = MkReferencePosition { referenceValue :: s }
+newtype Offset s = MkOffset { fromOffset :: s }
     deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq, Arbitrary)
-
-newtype RelativePosition s = MkRelativePosition { fromRelativePosition :: s }
-    deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq, Arbitrary)
-
-absolutePosition :: (Integral s, Bounded s)
-                 => ReferencePosition s
-                 -> RelativePosition s
-                 -> s
-absolutePosition MkReferencePosition{referenceValue} MkRelativePosition{fromRelativePosition} =
-    fromIntegral $
-        if fromRelativePosition < referenceValue
-        then maxBound - (referenceValue - fromRelativePosition)
-        else fromRelativePosition - referenceValue
-
-relativePosition :: (Integral s)
-                 => ReferencePosition s
-                 -> s
-                 -> RelativePosition s
-relativePosition y xr = MkRelativePosition (fromIntegral y + fromIntegral xr)
 
 -- --------------------------------------
 -- --------------------------------------
 class IsClock c where
     tickDuration :: c -> NominalDiffTime
 
+-- | Return the number of timestamp that a temopral value represents
+timeOf :: (IsClock c, Integral t) => c -> t -> NominalDiffTime
+timeOf c t = fromInteger (toInteger t) * tickDuration c
+
 toRate :: (IsClock c, Integral t) => c -> t
 toRate c = round (recip (tickDuration c))
 
-timeOf :: (IsClock c, Integral t) => c -> t -> NominalDiffTime
-timeOf c t = fromIntegral t * tickDuration c
-
 clockDiffTime :: (IsClock c, Integral t) => c -> t -> t -> NominalDiffTime
-clockDiffTime c t1 t0 = let d = tickDuration c
-                        in
-                            fromInteger (toInteger (t1 - t0)) * d
+clockDiffTime c t1 t0 = timeOf c t1 - timeOf c t0
 
 -- --------------------------------------
 data StaticClock (rate :: Nat) = MkStaticClock
@@ -255,5 +282,12 @@ newtype Clock = MkClock NominalDiffTime
     deriving (Show)
 
 fromRate :: Integral t => t -> Clock
-fromRate ticksPerSecond =
-    MkClock (1 / fromIntegral ticksPerSecond)
+fromRate timestampPerSecond =
+    MkClock (1 / fromIntegral timestampPerSecond)
+
+
+
+-- -----------------------------------------------------------------------
+-- Lenses
+-- -----------------------------------------------------------------------
+makeLenses ''Sample
