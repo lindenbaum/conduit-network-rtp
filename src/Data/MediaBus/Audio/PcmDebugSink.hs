@@ -1,4 +1,4 @@
-module Data.Conduit.Audio.PcmDebugSink
+module Data.MediaBus.Audio.PcmDebugSink
   ( debugPlayback16kMono
   , debugPlayback8kMono ) where
 

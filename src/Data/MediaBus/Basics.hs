@@ -1,6 +1,10 @@
-module Data.MediaBus.Basics (IdentifiedBy(..), Event(..), Sample(..) ) where
+module Data.MediaBus.Basics
+    ( IdentifiedBy(..)
+    , Event(..)
+    , Sample(..)
+    ) where
 
-import Data.Function (on)
+import           Data.Function       ( on )
 
 -- -----------------------------------------------------
 -- * Media Data Processing Base Types

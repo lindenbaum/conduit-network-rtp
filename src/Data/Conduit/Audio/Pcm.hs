@@ -1,9 +1,11 @@
-module Data.Conduit.Audio.Pcm
+module Data.MediaBus.Audio.Pcm
        ( Pcm(..), RawPcm
        , Pcm8KMono, Pcm16KMono, Pcm48KStereo
        , PcmFormat(..), PcmChannels(..), PcmRate(..)
-       , pcmRateVal, pcmChannelsVal
-       , pcmRate, pcmChannels
+       -- , pcmRateVal
+       -- , pcmRate
+       , pcmChannelsVal
+       , pcmChannels
        , pcmEmpty, pcmFromList, pcmLength, foldPcm, update, pcmModify)
        where
 
