@@ -15,8 +15,10 @@ import           Data.Vector.Generic.Mutable as X ( MVector(..) )
 import           Control.Monad.ST            as X ( ST, runST )
 
 -- | A type class that abstracts over traversable/foldable media data storage
-newtype SampleBuffer a = MkSampleBuffer { _sampleVector :: SV.Vector a }
+newtype SampleBuffer (format :: k) a = MkSampleBuffer { _sampleVector :: SV.Vector a }
     deriving (Eq, Show)
+
+
 
 makeLenses ''SampleBuffer
 

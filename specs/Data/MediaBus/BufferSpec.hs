@@ -19,17 +19,17 @@ spec = describe "SampleBuffer" $ do
         MkSampleBuffer (fromList (Prelude.replicate 5 True))
     describe "mutateSamples" $
         it "modifies in-place" $
-        let mutateInc v =
+        let f v =
                 -- imperative safe destructive updates
                 let n = V.length v
                 in
                     forM_ [0 .. (n - 1) `div` 2] (\i -> V.swap v i (n - 1 - i))
         in
-            mutateSamples mutateInc (MkSampleBuffer (fromList [1 .. 4 :: Int])) `shouldBe`
+            mutateSamples f (MkSampleBuffer (fromList [1 .. 4 :: Int])) `shouldBe`
                 MkSampleBuffer (fromList [4,3 .. 1])
     describe "unsafeMutateSamples" $
         it "modifies in-place and can return values" $
-        let mutateInc v =
+        let f v =
                 -- imperative safe destructive updates
                 let n = V.length v
                 in
@@ -38,7 +38,7 @@ spec = describe "SampleBuffer" $ do
                               V.swap v i (n - 1 - i)
                               return i)
         in
-            unsafeMutateSamples mutateInc
+            unsafeMutateSamples f
                                 (MkSampleBuffer (fromList [1 .. 4 :: Int])) `shouldBe`
                 ([ 0, 1 ], MkSampleBuffer (fromList [4,3 .. 1]))
 
