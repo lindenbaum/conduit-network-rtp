@@ -1,9 +1,9 @@
 module Data.MediaBusSpec ( spec ) where
 
-import           Conduit                    as C
-import           Data.Conduit.List          ( consume, sourceList )
+import           Conduit           as C
+import           Data.Conduit.List ( consume, sourceList )
 import           Data.Function
-import           Data.List                  ( sort )
+import           Data.List         ( sort )
 import           Data.Word
 import           Test.Hspec
 import           Test.QuickCheck
@@ -70,7 +70,12 @@ type RawDataNetworkSource = NetworkSource RawData
 spec :: Spec
 spec = do
     reorderSpec
-    addSequenceNumberSpec
+    synchronizeWithCounterSpec
+
+instance HasTimestamp Word8 where
+    type GetTimestamp Word8 = Word8
+    type SetTimestamp Word8 t = t
+    timestamp f x = f x
 
 reorderSpec :: Spec
 reorderSpec = describe "reorder" $ do
@@ -82,7 +87,7 @@ reorderSpec = describe "reorder" $ do
         property $
             \(Positive windowSize) ->
                 let outSamples = runConduitPure (sourceList inSamples .|
-                                                     reorder windowSize id .|
+                                                     reorder windowSize .|
                                                      consume)
                     inSamples = [ 253, 254, 255, 0, 1 :: Word8 ]
                 in
@@ -93,7 +98,7 @@ reorderOutputIsMonotoneIncreasing :: [Monotone Word8]
                                   -> Expectation
 reorderOutputIsMonotoneIncreasing inSamples (Positive windowSize) =
     let outSamples = runConduitPure (sourceList inSamples .|
-                                         reorder windowSize id .|
+                                         reorder windowSize .|
                                          consume)
     in
         outSamples `shouldBe` sort outSamples
@@ -103,25 +108,28 @@ reorderOutputOnlyEmptyIfInputEmpty :: [Monotone Word8]
                                    -> Expectation
 reorderOutputOnlyEmptyIfInputEmpty inSamples (Positive windowSize) =
     let outSamples = runConduitPure (sourceList inSamples .|
-                                         reorder windowSize id .|
+                                         reorder windowSize .|
                                          consume)
     in
         null inSamples `shouldBe` null outSamples
 
-addSequenceNumberSpec :: Spec
-addSequenceNumberSpec = describe "addSequenceNumber" $
-    it "produces dense, strictly monotonic output" $
-        property addSequenceNumberIsMonotone
+synchronizeWithCounterSpec :: Spec
+synchronizeWithCounterSpec =
+    describe "synchronizeWithCounter" $
+        it "produces dense, strictly monotonic output" $
+            property synchronizeWithCounterIsMonotone
 
-addSequenceNumberIsMonotone :: (NonEmptyList [Bool]) -> Word64 -> Expectation
-addSequenceNumberIsMonotone (NonEmpty xs) startVal =
+synchronizeWithCounterIsMonotone :: (NonEmptyList [Bool])
+                                 -> Word64
+                                 -> Expectation
+synchronizeWithCounterIsMonotone (NonEmpty xs) startVal =
     let inEvents = sourceList xs
         (first : rest) = runConduitPure (inEvents .|
-                                             addSequenceNumber (MkOffset startVal) .|
+                                             synchronizeWithCounter (MkOffset startVal) .|
                                              consume)
     in do
         first `shouldBe`
             SynchronizeTo (MkOffset startVal) (MkSample startVal (head xs))
         (rest `zip` drop 1 rest) `shouldSatisfy`
             all (not .
-                     uncurry (succeeds `on` _presentationTime . fromSynchronized))
+                     uncurry (succeeds `on` _sampleTimestamp . fromSynchronized))

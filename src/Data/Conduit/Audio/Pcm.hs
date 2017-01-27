@@ -37,8 +37,10 @@ type Pcm48KStereo = Pcm ('MkPcmFormat 'PcmStereo 'Pcm48000)
 -- channels, so this information must be present in 'PcmFormat'
 data PcmChannels = PcmMono | PcmStereo
 
-pcmChannels
-  :: forall (c :: PcmChannels) r . KnownNat (GetPcmChannels c) =>  Pcm ('MkPcmFormat c r) -> Int
+pcmChannels :: forall (c :: PcmChannels) r.
+            KnownNat (GetPcmChannels c)
+            => Pcm ('MkPcmFormat c r)
+            -> Int
 pcmChannels _ = pcmChannelsVal (Proxy @c)
 
 pcmChannelsVal

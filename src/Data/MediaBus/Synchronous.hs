@@ -1,16 +1,16 @@
 module Data.MediaBus.Synchronous
     ( SynchronizedTo(..)
     , Offset(..)
-    , addSequenceNumber
-    , sampleWithUTC
-    , addTimestamp
-    , sampleWith
+    , synchronizeWithCounter
+    , synchronizeSamplesUTC
+    , synchronizeBlindly
+    , synchronizeSamples
     ) where
 
 import           Conduit
 import           Data.Function              ( on )
 import           Data.MediaBus.Ordered
-import           Data.MediaBus.Basics
+import           Data.MediaBus.Sample
 import           Test.QuickCheck            ( Arbitrary(..) )
 import           Control.Monad.State.Strict
 import           Data.Time.Clock            ( NominalDiffTime, UTCTime
@@ -54,11 +54,11 @@ instance Show s =>
     show (MkOffset x) = "(+|" ++ show x ++ "|)"
 
 -- | Sample some input to a sequence number.
-addSequenceNumber :: (Monad m, Integral i)
-                  => Offset i
-                  -> ConduitM a (SynchronizedTo (Offset i) (Sample i a)) m ()
-addSequenceNumber startValue =
-    addTimestamp (pure startValue) handle
+synchronizeWithCounter :: (Monad m, Integral i)
+                       => Offset i
+                       -> ConduitM a (SynchronizedTo (Offset i) (Sample i a)) m ()
+synchronizeWithCounter startValue =
+    synchronizeBlindly (pure startValue) handle
   where
     handle = do
         MkOffset s <- get
@@ -66,9 +66,9 @@ addSequenceNumber startValue =
         return s
 
 -- | Add 'UTCTime' timestamps as 'NominalDiffTime'
-sampleWithUTC :: (MonadIO m)
-              => Conduit a m (SynchronizedTo UTCTime (Sample NominalDiffTime a))
-sampleWithUTC = addTimestamp start handle
+synchronizeSamplesUTC :: (MonadIO m)
+                      => Conduit a m (SynchronizedTo UTCTime (Sample NominalDiffTime a))
+synchronizeSamplesUTC = synchronizeBlindly start handle
   where
     start = liftIO getCurrentTime
     handle = do
@@ -77,12 +77,12 @@ sampleWithUTC = addTimestamp start handle
         return (diffUTCTime now startTime)
 
 -- | Synchronize a stream from a stateful callback.
-addTimestamp :: Monad m
-             => m s
-             -> StateT s m t
-             -> Conduit a m (SynchronizedTo s (Sample t a))
-addTimestamp start handle =
-    sampleWith start' handle'
+synchronizeBlindly :: Monad m
+                   => m s
+                   -> StateT s m t
+                   -> Conduit a m (SynchronizedTo s (Sample t a))
+synchronizeBlindly start handle =
+    synchronizeSamples start' handle'
   where
     start' = do
         c <- start
@@ -94,10 +94,10 @@ addTimestamp start handle =
         return ((if isFirst then SynchronizeTo c else Synchronized) (MkSample t
                                                                               p))
 
-sampleWith :: Monad m
-           => m s
-           -> (a -> StateT s m (SynchronizedTo c (Sample t a)))
-           -> Conduit a m (SynchronizedTo c (Sample t a))
-sampleWith startStateM handle = do
+synchronizeSamples :: Monad m
+                   => m s
+                   -> (a -> StateT s m (SynchronizedTo c (Sample t a)))
+                   -> Conduit a m (SynchronizedTo c (Sample t a))
+synchronizeSamples startStateM handle = do
     startState <- lift startStateM
     evalStateC startState (awaitForever (lift . handle >=> yield))

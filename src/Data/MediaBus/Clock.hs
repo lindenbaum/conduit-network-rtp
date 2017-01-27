@@ -2,7 +2,9 @@ module Data.MediaBus.Clock
     ( tickDiffTime
     , timeOf
     , Clock(..)
+    , clockTick
     , HasClock(..)
+    , HasTimestamp(..)
     , ClockRate(..)
     , At8kHz
     , At12kHz
@@ -18,11 +20,33 @@ import           GHC.TypeLits
 import           Data.Proxy
 import           Control.Lens
 
-
 newtype Clock = MkClock { _clockTick :: NominalDiffTime }
     deriving (Show, Eq, Ord)
 
-makeClassy ''Clock
+makeLenses ''Clock
+
+class SetClock s (GetClock s) ~ s =>
+      HasClock s where
+    type GetClock s
+    type SetClock s t
+    clock :: Lens s (SetClock s t) (GetClock s) t
+
+instance HasClock Clock where
+    type GetClock Clock = Clock
+    type SetClock Clock t = t
+    clock = iso id id
+
+-- | A type class for things that have a time stamp
+class SetTimestamp s (GetTimestamp s) ~ s =>
+      HasTimestamp s where
+    type SetTimestamp s t
+    type GetTimestamp s
+    timestamp :: Lens s (SetTimestamp s t) (GetTimestamp s) t
+
+-- | A type class for things that are a clock
+class IsClock t where
+    type ReferenceTime t
+    type Timestamp t
 
 -- | Return the number of timestamp that a temopral value represents
 timeOf :: Integral t => Clock -> t -> NominalDiffTime
@@ -49,6 +73,8 @@ type At48kHz = 'MkClockRate 48000
 
 instance (KnownNat rate) =>
          HasClock (Proxy ('MkClockRate rate)) where
+    type GetClock (Proxy ('MkClockRate rate)) = Clock
+    type SetClock (Proxy ('MkClockRate rate)) t = Proxy ('MkClockRate rate)
     clock = lens (MkClock . fromInteger . natVal . getRate) const
       where
         getRate :: Proxy ('MkClockRate rate) -> Proxy rate

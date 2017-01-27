@@ -10,7 +10,9 @@ import           Data.Word
 import           Data.Int
 import           Test.QuickCheck      ( Arbitrary(..) )
 import           Conduit
-import           Data.MediaBus.Basics
+import           Data.MediaBus.Clock
+import           Control.Lens
+import           Data.Function        ( on )
 
 -- -----------------------------------------------------------------------------
 -- * Media Data Ordering
@@ -48,40 +50,63 @@ instance IsMonotone Int
 newtype Monotone a = MkMonotone { fromMonotone :: a }
     deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
 
+instance HasTimestamp (Monotone a) where
+  type GetTimestamp (Monotone a) = a
+  type SetTimestamp (Monotone a) b = Monotone b
+  timestamp = iso fromMonotone MkMonotone
+
 instance (Eq a, IsMonotone a) =>
          Ord (Monotone a) where
-    compare x y = if x == y then EQ else if x `succeeds` y then GT else LT
+    compare x y
+        | x == y = EQ
+        | x `succeeds` y = GT
+        | otherwise = LT
 
 -- | Buffer incoming samples in a queue of the given size and output them in
 -- order. The output is monotone increasing.
-reorder :: (Eq t, IsMonotone t, Monad m) => Int -> (a -> t) -> Conduit a m a
-reorder windowSize indexOf =
-    go Set.empty Nothing
+reorder :: (Eq (GetTimestamp a), IsMonotone (GetTimestamp a), HasTimestamp a, Monad m)
+        => Int
+        -> Conduit a m a
+reorder windowSize = go Set.empty Nothing
   where
     go queue minIndex = do
         mx <- await
         case mx of
-            Nothing -> mapM_ (yield . _sampleData) queue
-            Just x -> let xt = indexOf x
+            Nothing -> mapM_ (yield . keyOrderedValue) queue
+            Just x -> let xt = x ^. timestamp
                       in
                           if maybe False (not . succeeds xt) minIndex
                           then go queue minIndex
-                          else let queue' = Set.insert (MkSample (MkMonotone xt)
-                                                                 x)
+                          else let queue' = Set.insert (MkKeyOrdered (MkMonotone xt)
+                                                                     x)
                                                        queue
                                    mMinView = Set.minView queue'
                                in
                                    if Set.size queue >= windowSize
-                                   then mapM_ (yield . _sampleData . fst)
+                                   then mapM_ (yield . keyOrderedValue . fst)
                                               mMinView
                                        >> go (maybe queue' snd mMinView)
                                              (maybe minIndex
                                                     (Just .
                                                          fromMonotone .
-                                                             _presentationTime .
+                                                             keyOrderedKey .
                                                                  fst)
                                                     mMinView)
                                    else go queue' minIndex
+
+-- | Internal newtype wrapper 'Ord'ered on the key
+data KeyOrdered k v = MkKeyOrdered { keyOrderedKey   :: k
+                                   , keyOrderedValue :: v
+                                   }
+    deriving Show
+
+instance Ord k =>
+         Ord (KeyOrdered k v) where
+    compare = compare `on` keyOrderedKey
+
+instance Eq k =>
+         Eq (KeyOrdered k v) where
+    (==) = (==) `on` keyOrderedKey
 
 -- -----------------------------------------------------
 -- * Dealing with gaps in media streams

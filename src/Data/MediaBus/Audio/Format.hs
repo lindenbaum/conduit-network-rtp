@@ -1,7 +1,18 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Data.MediaBus.Audio.Format ( ) where
+module Data.MediaBus.Audio.Format
+    ( ChannelLayout(..)
+    , HasChannelLayout(..)
+    , SampleType(..)
+    , HasSampleType(..)
+    , Format(..)
+    , formatSampleType
+    , formatClockRate
+    , formatChannelLayout
+    , FormatProxy(..)
+    ) where
 
+import           Data.MediaBus.Basics
 import           Data.MediaBus.Clock
 import           Data.Proxy
 import           Data.Kind
@@ -21,7 +32,10 @@ instance HasChannelLayout (Proxy 'ChannelPair) where
 data SampleType = ALaw | ULaw | Signed16Bit
     deriving (Show, Eq, Ord, Enum)
 
-makeClassy ''SampleType
+makeFields ''SampleType
+
+class HasSampleType s where
+    sampleType :: Lens' s SampleType
 
 instance HasSampleType (Proxy 'ALaw) where
     sampleType = lens (const ALaw) const
@@ -38,26 +52,40 @@ data Format = MkFormat { _formatSampleType    :: SampleType
                        }
     deriving (Eq, Show)
 
-makeClassy ''Format
+makeLenses ''Format
 
 data FormatProxy ::
      SampleType -> ClockRate -> ChannelLayout -> Type where
         MkFormatProxy :: FormatProxy f c l
 
-instance (HasClock (Proxy c), HasSampleType (Proxy f), HasChannelLayout (Proxy l)) =>
-         HasFormat (FormatProxy f c l) where
-    format f px = undefined
+instance (HasSampleType (Proxy f), HasClock (Proxy r), GetClock (Proxy r) ~ Clock, HasChannelLayout (Proxy c)) =>
+         HasFormat (FormatProxy f r c) where
+    type GetFormat (FormatProxy f r c) = Format
+    type SetFormat (FormatProxy f r c) t = (FormatProxy f r c)
+    format f px = px <$ f fromPx
+      where
+        fromPx = MkFormat (fProxy px ^. sampleType)
+                          (rProxy px ^. clock)
+                          (cProxy px ^. channelLayout)
+        fProxy :: FormatProxy f r c -> Proxy f
+        fProxy _ = Proxy
+        rProxy :: FormatProxy f r c -> Proxy r
+        rProxy _ = Proxy
+        cProxy :: FormatProxy f r c -> Proxy c
+        cProxy _ = Proxy
 
 instance HasChannelLayout (Proxy c) =>
          HasChannelLayout (FormatProxy f r c) where
-    channelLayout = undefined
+    channelLayout f px = px <$ f (chProxy px ^. channelLayout)
       where
         chProxy :: FormatProxy f r c -> Proxy c
         chProxy _ = Proxy
 
-instance HasClock (Proxy r) =>
+instance (GetClock (Proxy r) ~ Clock, HasClock (Proxy r)) =>
          HasClock (FormatProxy f r c) where
-    clock = undefined
+    type GetClock (FormatProxy f r c) = Clock
+    type SetClock (FormatProxy f r c) t = (FormatProxy f r c)
+    clock f px = px <$ f (rProxy px ^. clock)
       where
         rProxy :: FormatProxy f r c -> Proxy r
         rProxy _ = Proxy

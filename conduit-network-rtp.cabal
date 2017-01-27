@@ -15,22 +15,27 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Data.Conduit.Audio.Alaw
-                     , Data.Conduit.Audio.Event
-                     , Data.Conduit.Audio.Partial
-                     , Data.Conduit.Audio.PcmDebugSink
-                     , Data.Conduit.Audio.Pcm
-                     , Data.Conduit.Audio.Reorder
-                     , Data.Conduit.Audio.RtpAlawSource
-                     , Data.Conduit.Audio.RtpPacket
-                     , Data.Conduit.Audio.RtpSource
-                     , Data.MediaBus
+  exposed-modules:
+                     --  Data.Conduit.Audio.Alaw
+                     -- , Data.Conduit.Audio.Event
+                     -- , Data.Conduit.Audio.Partial
+                     -- , Data.Conduit.Audio.PcmDebugSink
+                     -- , Data.Conduit.Audio.Pcm
+                     -- , Data.Conduit.Audio.Reorder
+                     -- , Data.Conduit.Audio.RtpAlawSource
+                     -- , Data.Conduit.Audio.RtpPacket
+                     -- , Data.Conduit.Audio.RtpSource
+                     -- ,
+                       Data.MediaBus
+                     , Data.MediaBus.Audio.Format
                      , Data.MediaBus.Basics
                      , Data.MediaBus.BiIndex
+                     , Data.MediaBus.Buffer
                      , Data.MediaBus.Clock
                      , Data.MediaBus.Ordered
                      , Data.MediaBus.RingBuffer
                      , Data.MediaBus.Rtp
+                     , Data.MediaBus.Sample
                      , Data.MediaBus.Synchronous
   default-language:    Haskell2010
   ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds
@@ -102,7 +107,8 @@ test-suite tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      specs
   main-is:             Spec.hs
-  other-modules:       Data.MediaBus.BiIndexSpec
+  other-modules:       Data.MediaBus.BufferSpec
+                     , Data.MediaBus.BiIndexSpec
                      , Data.MediaBus.RingBufferSpec
                      , Data.MediaBusSpec
   default-language:    Haskell2010
