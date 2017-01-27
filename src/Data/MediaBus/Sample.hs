@@ -40,10 +40,11 @@ instance HasTimestamp (Sample t b) where
     type GetTimestamp (Sample t b) = t
     timestamp = sampleTimestamp
 
-instance HasSampleBuffer b => HasSampleBuffer (Sample t b) where
-    type SetBuffer (Sample t b) b' = (Sample t b')
+instance HasSampleBuffer b =>
+         HasSampleBuffer (Sample t b) where
+    type SetSampleType (Sample t b) b' = Sample t (SetSampleType b b')
     type GetSampleType (Sample t b) = GetSampleType b
-    sampleContent = sampleContent . buffer
+    sampleBuffer = sampleContent . sampleBuffer
 
 instance (Show t, Show b) =>
          Show (Sample t b) where
@@ -60,10 +61,3 @@ instance Ord t =>
 
 instance Functor (Sample t) where
     fmap f (MkSample t x) = MkSample t (f x)
-
-instance HasSampleBuffer b =>
-         HasSampleBuffer (Sample t b) where
-    type SetSampleType (Sample t b) b' = Sample t (SetSampleType b b')
-    type GetSampleType (Sample t b) = b
-    eachSample = sampleContent . eachSample
-    sampleBuffer = sampleContent . sampleBuffer

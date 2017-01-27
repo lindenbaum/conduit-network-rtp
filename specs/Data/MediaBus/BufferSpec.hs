@@ -1,27 +1,46 @@
 module Data.MediaBus.BufferSpec ( spec ) where
 
 import           Data.MediaBus
+import           Control.Monad
 import           Test.Hspec
 import           Control.Lens
 import           Data.Char
-import           Control.Monad.ST
-import           Data.Vector.Storable.Mutable
+import qualified Data.Vector.Generic.Mutable as V
 
 spec :: Spec
-spec = describe "IsBuffer" $ do
+spec = describe "SampleBuffer" $ do
     it "can be mapped over with eachSample" $
-        (MkTestBuffer "Hello" & eachSample %~ toUpper) `shouldBe`
-            MkTestBuffer "HELLO"
+        ((MkSampleBuffer (fromList "Hello")) & eachSample %~ toUpper) `shouldBe`
+        MkSampleBuffer (fromList "HELLO")
+    it "can be mapped over with eachSample changing the type" $
+        (MkSampleBuffer (fromList "Hello") & sampleBuffer . sampleVector .
+             each %~
+             const True) `shouldBe`
+        MkSampleBuffer (fromList (Prelude.replicate 5 True))
+    describe "mutateSamples" $
+        it "modifies in-place" $
+        let mutateInc v =
+                -- imperative safe destructive updates
+                let n = V.length v
+                in
+                    forM_ [0 .. (n - 1) `div` 2] (\i -> V.swap v i (n - 1 - i))
+        in
+            mutateSamples mutateInc (MkSampleBuffer (fromList [1 .. 4 :: Int])) `shouldBe`
+                MkSampleBuffer (fromList [4,3 .. 1])
+    describe "unsafeMutateSamples" $
+        it "modifies in-place and can return values" $
+        let mutateInc v =
+                -- imperative safe destructive updates
+                let n = V.length v
+                in
+                    forM [0 .. (n - 1) `div` 2]
+                         (\i -> do
+                              V.swap v i (n - 1 - i)
+                              return i)
+        in
+            unsafeMutateSamples mutateInc
+                                (MkSampleBuffer (fromList [1 .. 4 :: Int])) `shouldBe`
+                ([ 0, 1 ], MkSampleBuffer (fromList [4,3 .. 1]))
 
 data TestFormat = MkTestFormat
     deriving Show
-
-newtype TestBuffer a = MkTestBuffer { _testBuffer :: [a] }
-    deriving (Eq, Show)
-
-makeLenses ''TestBuffer
-
-instance Storable a =>
-         IsBuffer (TestBuffer a) where
-    type BufferElement (TestBuffer a) = a
-    eachSample = testBuffer . each--    mutableVector =
