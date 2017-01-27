@@ -13,12 +13,12 @@ import           Data.Vector.Storable        as SV ( Vector, modify
                                                    , unsafeFreeze, unsafeThaw )
 import           Data.Vector.Generic.Mutable as X ( MVector(..) )
 import           Control.Monad.ST            as X ( ST, runST )
+import           Data.MediaBus.Basics
 
 -- | A type class that abstracts over traversable/foldable media data storage
-newtype SampleBuffer (format :: k) a = MkSampleBuffer { _sampleVector :: SV.Vector a }
+newtype SampleBuffer format =
+      MkSampleBuffer { _sampleVector :: SV.Vector (SampleFormat format) }
     deriving (Eq, Show)
-
-
 
 makeLenses ''SampleBuffer
 

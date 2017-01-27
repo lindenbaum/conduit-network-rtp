@@ -1,5 +1,6 @@
 module Data.MediaBus.Sample
-    ( Sample(..)
+    ( SampleFormat(..)
+    , Sample(..)
     , sampleTimestamp
     , sampleContent
     ) where
@@ -29,10 +30,12 @@ data Sample t b = MkSample { _sampleTimestamp :: t
 
 makeLenses ''Sample
 
+-- | A class of types, that describe some media /format/.
 instance HasFormat b =>
          HasFormat (Sample t b) where
     type GetFormat (Sample t b) = GetFormat b
     type SetFormat (Sample t b) b' = Sample t (SetFormat b b')
+    type SampleFormat (Sample t b) = SampleFormat b
     format = sampleContent . format
 
 instance HasTimestamp (Sample t b) where

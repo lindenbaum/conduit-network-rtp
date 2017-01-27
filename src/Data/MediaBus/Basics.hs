@@ -4,17 +4,19 @@ module Data.MediaBus.Basics
     ( HasFormat(..)
     , IdentifiedBy(..)
     , HasIdentifiedBy(..)
-      --    , Event(..)
     ) where
 
+--    , Event(..)
 import           Control.Lens
 
-
 -- | A type class for media formats, like encodings, sample rate, etc...
-class SetFormat s (GetFormat s) ~ s =>
+class (SetFormat s (GetFormat s) ~ s) =>
       HasFormat s where
     type SetFormat s t
     type GetFormat s
+    -- | A sample type, to be used for storing single samples of the media, e.g.
+    -- PCM encoded, single values of raw audio
+    type SampleFormat s
     format :: Lens s (SetFormat s t) (GetFormat s) t
 
 -- | Things that can be uniquely identified by a looking at a (much simpler)
