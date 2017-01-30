@@ -1,7 +1,6 @@
 {-# LANGUAGE UndecidableInstances #-}
-module Data.MediaBus.Buffer
+module Data.MediaBus.Sample
     ( HasSampleBuffer(..)
-    , HasSampleFormat(..)
     , SampleBuffer(..)
     , sampleVector
     , mutateSamples
@@ -15,14 +14,6 @@ import           Data.Vector.Storable        as SV ( Vector, modify
                                                    , unsafeFreeze, unsafeThaw )
 import           Data.Vector.Generic.Mutable as X ( MVector(..) )
 import           Control.Monad.ST            as X ( ST, runST )
-
--- | A type class for media formats, like encodings, sample rate, etc...
-class (SetSampleFormat s (GetSampleFormat s) ~ s) =>
-      HasSampleFormat s where
-    type SetSampleFormat s t
-    type GetSampleFormat s
-    type ToSampleType s
-    sampleFormat :: Lens s (SetSampleFormat s t) (GetSampleFormat s) t
 
 -- | A type class that abstracts over traversable/foldable media data storage
 newtype SampleBuffer sampleType =

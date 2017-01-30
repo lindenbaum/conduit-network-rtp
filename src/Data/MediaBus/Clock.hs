@@ -1,19 +1,13 @@
 module Data.MediaBus.Clock
     ( UtcClock(..)
+    , StaticUtcClock(..)
+    , StaticUtcTimestamp(..)
     , IsClock(..)
     , HasClock(..)
     , HasTimestamp(..)
-    , ClockRate(..)
     , Event(..)
     , eventTimestamp
     , eventContent
-    , At8kHz
-    , At12kHz
-    , At16kHz
-    , At22050Hz
-    , At32kHz
-    , At44100Hz
-    , At48kHz
     , SynchronizedTo(..)
     , synchronizeToClock
     ) where
@@ -46,31 +40,6 @@ class SetClock s (GetClock s) ~ s =>
     type SetClock s t
     clock :: Lens s (SetClock s t) (GetClock s) t
 
-newtype ClockRate = MkClockRate Nat
-
-type At8kHz = 'MkClockRate 8000
-
-type At12kHz = 'MkClockRate 12000
-
-type At16kHz = 'MkClockRate 16000
-
-type At22050Hz = 'MkClockRate 22050
-
-type At32kHz = 'MkClockRate 32000
-
-type At44100Hz = 'MkClockRate 44100
-
-type At48kHz = 'MkClockRate 48000
-
-instance (KnownNat rate) =>
-         HasClock (Proxy ('MkClockRate rate)) where
-    type GetClock (Proxy ('MkClockRate rate)) = UtcClock
-    type SetClock (Proxy ('MkClockRate rate)) t = Proxy ('MkClockRate rate)
-    clock = lens (MkClock . fromInteger . natVal . getRate) const
-      where
-        getRate :: Proxy ('MkClockRate rate) -> Proxy rate
-        getRate _ = Proxy
-
 -- | Clocks can generate reference times, and they can convert these to timestamps. Timestamps are mere integrals
 class IsClock c m where
     type Timestamp c
@@ -99,6 +68,33 @@ instance MonadIO m =>
     nextTimestamp clk@(MkClock res) ref _t0 = do
         ref' <- referenceTime clk
         return (diffUTCTime ref' ref / res)
+
+data StaticUtcClock (utcClockResolution :: Nat) = MkStaticUtcClock
+    deriving (Show, Eq, Ord)
+
+data StaticUtcTimestamp (utcClockResolution :: Nat) =
+      MkStaticUtcTimestamp { utcTimestamp :: NominalDiffTime }
+    deriving (Show, Ord, Eq)
+
+instance HasClock (StaticUtcClock u) where
+    type GetClock (StaticUtcClock u) = StaticUtcClock u
+    type SetClock (StaticUtcClock u) t = t
+    clock = iso id id
+
+instance (KnownNat res, MonadIO m) =>
+         IsClock (StaticUtcClock res) m where
+    type ReferenceTime (StaticUtcClock res) = UTCTime
+    type Timestamp (StaticUtcClock res) = StaticUtcTimestamp res
+    referenceTime _ = liftIO getCurrentTime
+    zeroTimestamp _ = return (MkStaticUtcTimestamp 0)
+    referenceTimestamp _ ref = do
+        let res = 1 / fromInteger (natVal (Proxy :: Proxy res))
+        return (MkStaticUtcTimestamp (diffUTCTime ref (UTCTime (toEnum 0) 0) /
+                                          res))
+    nextTimestamp clk ref _t0 = do
+        let res = 1 / fromInteger (natVal (Proxy :: Proxy res))
+        ref' <- referenceTime clk
+        return (MkStaticUtcTimestamp (diffUTCTime ref' ref / res))
 
 -- * Media Data Synchronization
 data SynchronizedTo o p =

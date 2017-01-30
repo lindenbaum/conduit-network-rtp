@@ -1,4 +1,4 @@
-module Data.MediaBus.BufferSpec ( spec ) where
+module Data.MediaBus.SampleSpec ( spec ) where
 
 import           Data.MediaBus
 import           Control.Monad

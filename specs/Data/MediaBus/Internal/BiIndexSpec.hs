@@ -1,18 +1,16 @@
-module Data.MediaBus.BiIndexSpec ( spec ) where
+module Data.MediaBus.Internal.BiIndexSpec ( spec ) where
 
-import           Data.MediaBus.BiIndex
+import           Data.MediaBus.Internal.BiIndex
 import           Test.Hspec
 import           Test.QuickCheck
 import           Control.Lens
-import           Data.Word
 
 spec :: Spec
-spec = do
-    describe "BiIndex consistency" $ do
-        it "is consistent regarding the major component" $
-            property additionMajor
-        it "is consistent regarding the minor component" $
-            property additionMinor
+spec = describe "BiIndex consistency" $ do
+    it "is consistent regarding the major component" $
+        property additionMajor
+    it "is consistent regarding the minor component" $
+        property additionMinor
 
 additionMajor :: BiIndex Integer Integer -> Integer -> Bool
 additionMajor b x = let h = major b - majorOffset b + x

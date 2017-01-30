@@ -27,15 +27,15 @@ library
                      -- , Data.Conduit.Audio.RtpSource
                      -- ,
                        Data.MediaBus
-                     , Data.MediaBus.Audio.Format
+                     , Data.MediaBus.Audio.Raw
                      , Data.MediaBus.Basics
-                     , Data.MediaBus.BiIndex
-                     , Data.MediaBus.Buffer
                      , Data.MediaBus.Clock
                      , Data.MediaBus.Frame
+                     , Data.MediaBus.Internal.BiIndex
                      , Data.MediaBus.Internal.Monotone
+                     , Data.MediaBus.Internal.RingBuffer
+                     , Data.MediaBus.Sample
                      , Data.MediaBus.Sequence
-                     , Data.MediaBus.RingBuffer
                      , Data.MediaBus.Rtp
   default-language:    Haskell2010
   ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds
@@ -108,9 +108,10 @@ test-suite tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      specs
   main-is:             Spec.hs
-  other-modules:       Data.MediaBus.BufferSpec
-                     , Data.MediaBus.BiIndexSpec
-                     , Data.MediaBus.RingBufferSpec
+  other-modules:       Data.MediaBus.Internal.BiIndexSpec
+                     , Data.MediaBus.Internal.RingBufferSpec
+                     , Data.MediaBus.FrameSpec
+                     , Data.MediaBus.SampleSpec
                      , Data.MediaBusSpec
   default-language:    Haskell2010
   build-depends:       QuickCheck
