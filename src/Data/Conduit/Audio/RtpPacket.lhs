@@ -41,7 +41,7 @@ converting and analysing the packet.
 >          , headerExtension :: !(Maybe HeaderExtension)}
 >   deriving (Eq)
 
-Sequence numbers are special because they wrap-around.
+SeqNum numbers are special because they wrap-around.
 
 To meaningfully compare them, this must be taken into account.
 E.g. when @x1 = 65535@ is the current sequence number and the next

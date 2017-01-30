@@ -34,14 +34,14 @@ rtpAlawToPcm48kStereo = go 0
       do  me <- await
           case me of
             Nothing -> return ()
-            Just (InBand (SequenceOf !s (NoGap (Packet Header{..} !body))))
+            Just (InBand (SeqNumOf !s (NoGap (Packet Header{..} !body))))
               | payloadType == 8 ->
                 let (!lastVal', !pcm) = alawToLinear48kStereo lastVal (Alaw body)
-                in yield (InBand (SequenceOf s (NoGap pcm))) >> go lastVal'
+                in yield (InBand (SeqNumOf s (NoGap pcm))) >> go lastVal'
               | otherwise ->
-                yield (InBand (SequenceOf s Gap)) >> go lastVal
-            Just (InBand (SequenceOf !s Gap)) ->
-              yield (InBand (SequenceOf s Gap)) >> go lastVal
+                yield (InBand (SeqNumOf s Gap)) >> go lastVal
+            Just (InBand (SeqNumOf !s Gap)) ->
+              yield (InBand (SeqNumOf s Gap)) >> go lastVal
             Just (OutOfBand !b) ->
               yield (OutOfBand b) >> go lastVal
 
@@ -66,14 +66,14 @@ rtpAlawToPcm16k = go 0
       do  me <- await
           case me of
             Nothing -> return ()
-            Just (InBand (SequenceOf !s (NoGap (Packet Header{..} !body))))
+            Just (InBand (SeqNumOf !s (NoGap (Packet Header{..} !body))))
               | payloadType == 8 ->
                 let (!lastVal', !pcm) = alawToLinear16k lastVal (Alaw body)
-                in yield (InBand (SequenceOf s (NoGap pcm))) >> go lastVal'
+                in yield (InBand (SeqNumOf s (NoGap pcm))) >> go lastVal'
               | otherwise ->
-                yield (InBand (SequenceOf s Gap)) >> go lastVal
-            Just (InBand (SequenceOf !s Gap)) ->
-              yield (InBand (SequenceOf s Gap)) >> go lastVal
+                yield (InBand (SeqNumOf s Gap)) >> go lastVal
+            Just (InBand (SeqNumOf !s Gap)) ->
+              yield (InBand (SeqNumOf s Gap)) >> go lastVal
             Just (OutOfBand !b) ->
               yield (OutOfBand b) >> go lastVal
 

@@ -11,7 +11,7 @@ import           Data.Conduit.Audio.RtpSource
 
 data ReorderState a =
   ReorderState {
-    rsEvents     :: !(Set.Set (SequenceOf a)),
+    rsEvents     :: !(Set.Set (SeqNumOf a)),
     rsMinBufEvts :: !Int,
     rsMaxBufEvts :: !Int,
     rsNext       :: !SeqNum,
@@ -75,11 +75,11 @@ reorderActive rs@ReorderState{..} = do
       case mrs of
         Nothing -> return ()
         Just rs' -> reorderActive rs'
-    (Just (InBand (SequenceOf !gapSeq Gap))) -> do
+    (Just (InBand (SeqNumOf !gapSeq Gap))) -> do
       liftIO $ putStrLn "Reorder Incoming Gap."
       reorderActive (rs { rsNext = gapSeq
                    , rsEvents = Set.filter ((<= gapSeq) . position) rsEvents })
-    (Just (InBand (SequenceOf !seqNum !(NoGap e)))) ->
+    (Just (InBand (SeqNumOf !seqNum !(NoGap e)))) ->
       if (fromIntegral (unSeqNum seqNum - unSeqNum rsNext) > rsMaxBufEvts) then
         do liftIO $
              printf "Reorder (seqNum - rsNext) > rsMaxBufEvts: rsNext = %d, seqNum: %d,restarting, buffer contains: %s.\n"
@@ -87,7 +87,7 @@ reorderActive rs@ReorderState{..} = do
            reorderActive (restartReorderStateAt seqNum e rs)
       else
         let
-          !es = Set.insert (SequenceOf seqNum e) rsEvents
+          !es = Set.insert (SeqNumOf seqNum e) rsEvents
           !eventCount = Set.size es
         in
           if eventCount < rsMinBufEvts
@@ -110,16 +110,16 @@ emptyReorderState si@SessionInfo{..} =
 
 restartReorderStateAt :: SeqNum -> a -> ReorderState a -> ReorderState a
 restartReorderStateAt !s !e ReorderState{..} =
-  ReorderState (Set.singleton (SequenceOf s e)) rsMinBufEvts rsMaxBufEvts s rsSession
+  ReorderState (Set.singleton (SeqNumOf s e)) rsMinBufEvts rsMaxBufEvts s rsSession
 
 propagateWithGap
   :: (MonadIO m)
   => SeqNum
   -> Int
-  -> Set.Set (SequenceOf t)
-  -> ConduitM i (RtpEvent t) m (SeqNum, Set.Set (SequenceOf t))
+  -> Set.Set (SeqNumOf t)
+  -> ConduitM i (RtpEvent t) m (SeqNum, Set.Set (SeqNumOf t))
 propagateWithGap !seqNumExpected !n !es = do
-  let ((SequenceOf !s body), !es') = Set.deleteFindMin es
+  let ((SeqNumOf !s body), !es') = Set.deleteFindMin es
   liftIO $
     printf "Reorder Gap detected: seqNumActual = %d,  seqNumExpected = %d.\n"
            (unSeqNum s) (unSeqNum seqNumExpected)
@@ -131,12 +131,12 @@ propagate
   :: (Monad m)
   => SeqNum
   -> Int
-  -> Set.Set (SequenceOf t)
-  -> ConduitM i (RtpEvent t) m (SeqNum, Set.Set (SequenceOf t))
+  -> Set.Set (SeqNumOf t)
+  -> ConduitM i (RtpEvent t) m (SeqNum, Set.Set (SeqNumOf t))
 propagate !s 0 !es = return (s, es)
 propagate !s !n !es =
   case Set.deleteFindMin es of
-    ((SequenceOf !s' body), !es') | s' == s ->
+    ((SeqNumOf !s' body), !es') | s' == s ->
       yieldInband s' body >> propagate (s+1) (n-1) es'
     _ ->
       return (s, es)

@@ -39,7 +39,7 @@ newtype SessionMsg =
 data SessionInfo =
   SessionInfo { siSsrc :: !Word32
               , siStartSeq :: !SeqNum
-              , siStartTimeStamp :: !Word32 }
+              , siSeqNumStartStamp :: !Word32 }
 
 instance Show SessionInfo where
   show (SessionInfo ssrc (MkSeqNum stseq) startts) =

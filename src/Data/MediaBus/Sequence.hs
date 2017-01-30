@@ -1,66 +1,72 @@
-module Data.MediaBus.Ordered
-    ( IsMonotone(..)
-    , Monotone(..)
+module Data.MediaBus.Sequence
+    ( SeqNum(..)
+    , fromSeqNum
+    , SeqNumStart(..)
+    , sequenceStart
+    , SeqNumOf(..)
     , reorder
+    , synchronizeToSeqNum
     , Discontinous(..)
     ) where
 
-import qualified Data.Set             as Set
-import           Data.Word
-import           Data.Int
-import           Test.QuickCheck      ( Arbitrary(..) )
+import qualified Data.Set                        as Set
+import           Test.QuickCheck                 ( Arbitrary(..) )
 import           Conduit
 import           Data.MediaBus.Clock
+import           Data.MediaBus.Internal.Monotone
 import           Control.Lens
-import           Data.Function        ( on )
+import           Data.Function                   ( on )
+import           System.Random
 
--- -----------------------------------------------------------------------------
--- * Media Data Ordering
--- -----------------------------------------------------------------------------x
--- | Class of numbers that are monotone increasing (or decreasing) and have a
--- relative order, that is not necessarily transitive.
---
--- For example, for a series of 'Word8' values: @0 64 128 192 0 64 128 ...@
--- could be interpreted as a monotone series of consecutive increasing values,
--- that wrap around after 255. But note that the 'Ord' instance is not
--- sufficient to express that @0@ is __after__ @192@, since @0 < 192@.
-class IsMonotone a where
-    succeeds :: a -> a -> Bool
-    default succeeds :: (Bounded a, Integral a) => a -> a -> Bool
-    x `succeeds` y = (x - y) < ((maxBound - minBound) `div` 2)
-
-instance IsMonotone Word8
-
-instance IsMonotone Word16
-
-instance IsMonotone Word32
-
-instance IsMonotone Word64
-
-instance IsMonotone Int8
-
-instance IsMonotone Int16
-
-instance IsMonotone Int32
-
-instance IsMonotone Int64
-
-instance IsMonotone Int
-
-newtype Monotone a = MkMonotone { fromMonotone :: a }
+newtype SeqNum a = MkSeqNum { _fromSeqNum :: a }
     deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
 
-instance HasTimestamp (Monotone a) where
-  type GetTimestamp (Monotone a) = a
-  type SetTimestamp (Monotone a) b = Monotone b
-  timestamp = iso fromMonotone MkMonotone
+instance HasTimestamp (SeqNum a) where
+    type GetTimestamp (SeqNum a) = a
+    type SetTimestamp (SeqNum a) b = SeqNum b
+    timestamp = iso _fromSeqNum MkSeqNum
 
 instance (Eq a, IsMonotone a) =>
-         Ord (Monotone a) where
+         Ord (SeqNum a) where
     compare x y
         | x == y = EQ
         | x `succeeds` y = GT
         | otherwise = LT
+
+makeLenses ''SeqNum
+
+-- | An offset, e.g. like the first rndom RTP timestamp to which the following
+-- timestamps relate.
+newtype SeqNumStart s = MkSeqNumStart { _sequenceStart :: s }
+    deriving (Bounded, Integral, Num, Enum, Real, Ord, Eq, Arbitrary, Functor, IsMonotone, Random)
+
+makeLenses ''SeqNumStart
+
+instance Show s =>
+         Show (SeqNumStart s) where
+    show (MkSeqNumStart x) =
+        "(+|" ++ show x ++ "|)"
+
+-- | A pseudo clock that runs sequence numbers, starting from a random start
+-- value.
+-- | Frame some input to a sequence number.
+data SeqNumOf s = MkSeqNumOf
+
+instance (Num s, Applicative m) =>
+         IsClock (SeqNumOf s) m where
+    type ReferenceTime (SeqNumOf s) = SeqNumStart s
+    type Timestamp (SeqNumOf s) = SeqNum s
+    referenceTime _ = pure 0
+    nextTimestamp _ _ t0 = pure (t0 + 1)
+    zeroTimestamp _ = pure 0
+    referenceTimestamp _ (MkSeqNumStart ref) =
+        pure (MkSeqNum ref)
+
+synchronizeToSeqNum :: (Monad m, Integral i)
+                    => SeqNumOf i
+                    -> SeqNumStart i
+                    -> ConduitM a (SynchronizedTo (SeqNumStart i) (Event (SeqNum i) a)) m ()
+synchronizeToSeqNum = synchronizeToClock
 
 -- | Buffer incoming samples in a queue of the given size and output them in
 -- order. The output is monotone increasing.
@@ -77,7 +83,7 @@ reorder windowSize = go Set.empty Nothing
                       in
                           if maybe False (not . succeeds xt) minIndex
                           then go queue minIndex
-                          else let queue' = Set.insert (MkKeyOrdered (MkMonotone xt)
+                          else let queue' = Set.insert (MkKeyOrdered (MkSeqNum xt)
                                                                      x)
                                                        queue
                                    mMinView = Set.minView queue'
@@ -88,7 +94,7 @@ reorder windowSize = go Set.empty Nothing
                                        >> go (maybe queue' snd mMinView)
                                              (maybe minIndex
                                                     (Just .
-                                                         fromMonotone .
+                                                         _fromSeqNum .
                                                              keyOrderedKey .
                                                                  fst)
                                                     mMinView)

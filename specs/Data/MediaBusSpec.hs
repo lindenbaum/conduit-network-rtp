@@ -2,7 +2,6 @@ module Data.MediaBusSpec ( spec ) where
 
 import           Conduit           as C
 import           Data.Conduit.List ( consume, sourceList )
-import           Data.Function
 import           Data.List         ( sort )
 import           Data.Word
 import           Test.Hspec
@@ -16,7 +15,7 @@ import           Data.MediaBus
 newtype RtpSsrc = MkRtpSsrc Word32
     deriving (Show, Eq)
 
-newtype RtpSequence = MkRtpSequence Word16
+newtype RtpSeqNum = MkRtpSeqNum Word16
     deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq)
 
 newtype RtpTimestamp = MkRtpTimestamp Word32
@@ -30,7 +29,7 @@ data RtpPayload = MkRtpPayload { rtpPayload     :: String
 newtype RtpPayloadType = MkRtpPayloadType { fromRtpPayloadType :: Word8 }
     deriving (Show, Eq, Num)
 
-data RawRtpPacket = MkRawRtpPacket { rawRtpSequenceNumber :: RtpSequence
+data RawRtpPacket = MkRawRtpPacket { rawRtpSeqNumNumber :: RtpSeqNum
                                    , rawRtpTimestamp      :: RtpTimestamp
                                    , rawRtpSsrc           :: RtpSsrc
                                    , rawRtpPayload        :: RtpPayload
@@ -40,17 +39,17 @@ data RawRtpPacket = MkRawRtpPacket { rawRtpSequenceNumber :: RtpSequence
 type RawRtpPacketSource = NetworkSource RawRtpPacket
 
 data RtpClockReference =
-      RtpTimestampReference Clock (Offset RtpTimestamp)
-    | RtpSequenceReference (Offset RtpSequence)
+      RtpTimestampReference UtcClock (SeqNumStart RtpTimestamp)
+    | RtpSeqNumReference (SeqNumStart RtpSeqNum)
     deriving Show
 
-type RtpSample = Sample (RtpSequence, RtpTimestamp) RtpPayload
+type RtpFrame = Frame (RtpSeqNum, RtpTimestamp) RtpPayload
 
-newtype OnRtpSequence = MkOnRtpSequence { unOnRtpSequence :: RtpSample }
+newtype OnRtpSeqNum = MkOnRtpSeqNum { unOnRtpSeqNum :: RtpFrame }
 
-type SyncRtpSample = SynchronizedTo RtpClockReference RtpSample
+type SyncRtpFrame = SynchronizedTo RtpClockReference RtpFrame
 
-type SyncRtpSource = IdentifiedBy RtpSsrc SyncRtpSample
+type SyncRtpSource = IdentifiedBy RtpSsrc SyncRtpFrame
 
 data IpPort = MkIpPort
 
@@ -58,9 +57,9 @@ data NtpTime = MkNtpTime
 
 data RawData = MkRawData
 
-type NetworkSource a = IdentifiedBy IpPort (UTCSyncSample a)
+type NetworkSource a = IdentifiedBy IpPort (UTCSyncFrame a)
 
-type UTCSyncSample a = SynchronizedTo (Offset UTCTime) (Sample DiffTime a)
+type UTCSyncFrame a = SynchronizedTo (SeqNumStart UTCTime) (Frame DiffTime a)
 
 type RawDataNetworkSource = NetworkSource RawData
 
@@ -70,12 +69,12 @@ type RawDataNetworkSource = NetworkSource RawData
 spec :: Spec
 spec = do
     reorderSpec
-    synchronizeWithCounterSpec
+    synchronizeToSeqNumSpec
 
 instance HasTimestamp Word8 where
     type GetTimestamp Word8 = Word8
     type SetTimestamp Word8 t = t
-    timestamp f x = f x
+    timestamp = ($)
 
 reorderSpec :: Spec
 reorderSpec = describe "reorder" $ do
@@ -86,50 +85,51 @@ reorderSpec = describe "reorder" $ do
     it "works even if the index wraps around" $
         property $
             \(Positive windowSize) ->
-                let outSamples = runConduitPure (sourceList inSamples .|
-                                                     reorder windowSize .|
-                                                     consume)
-                    inSamples = [ 253, 254, 255, 0, 1 :: Word8 ]
+                let outFrames = runConduitPure (sourceList inFrames .|
+                                                    reorder windowSize .|
+                                                    consume)
+                    inFrames = [ 253, 254, 255, 0, 1 :: Word8 ]
                 in
-                    outSamples `shouldBe` inSamples
+                    outFrames `shouldBe` inFrames
 
-reorderOutputIsMonotoneIncreasing :: [Monotone Word8]
+reorderOutputIsMonotoneIncreasing :: [SeqNum Word8]
                                   -> Positive Int
                                   -> Expectation
-reorderOutputIsMonotoneIncreasing inSamples (Positive windowSize) =
-    let outSamples = runConduitPure (sourceList inSamples .|
-                                         reorder windowSize .|
-                                         consume)
+reorderOutputIsMonotoneIncreasing inFrames (Positive windowSize) =
+    let outFrames = runConduitPure (sourceList inFrames .|
+                                        reorder windowSize .|
+                                        consume)
     in
-        outSamples `shouldBe` sort outSamples
+        outFrames `shouldBe` sort outFrames
 
-reorderOutputOnlyEmptyIfInputEmpty :: [Monotone Word8]
+reorderOutputOnlyEmptyIfInputEmpty :: [SeqNum Word8]
                                    -> Positive Int
                                    -> Expectation
-reorderOutputOnlyEmptyIfInputEmpty inSamples (Positive windowSize) =
-    let outSamples = runConduitPure (sourceList inSamples .|
-                                         reorder windowSize .|
-                                         consume)
+reorderOutputOnlyEmptyIfInputEmpty inFrames (Positive windowSize) =
+    let outFrames = runConduitPure (sourceList inFrames .|
+                                        reorder windowSize .|
+                                        consume)
     in
-        null inSamples `shouldBe` null outSamples
+        null inFrames `shouldBe` null outFrames
 
-synchronizeWithCounterSpec :: Spec
-synchronizeWithCounterSpec =
-    describe "synchronizeWithCounter" $
+synchronizeToSeqNumSpec :: Spec
+synchronizeToSeqNumSpec =
+    describe "synchronizeToSeqNum" $
         it "produces dense, strictly monotonic output" $
-            property synchronizeWithCounterIsMonotone
+            property synchronizeToSeqNumIsMonotone
 
-synchronizeWithCounterIsMonotone :: (NonEmptyList [Bool])
-                                 -> Word64
-                                 -> Expectation
-synchronizeWithCounterIsMonotone (NonEmpty xs) startVal =
+synchronizeToSeqNumIsMonotone :: (NonEmptyList [Bool])
+                                -> Word64
+                                -> Expectation
+synchronizeToSeqNumIsMonotone (NonEmpty xs) startVal = do
     let inEvents = sourceList xs
         (first : rest) = runConduitPure (inEvents .|
-                                             synchronizeWithCounter (MkOffset startVal) .|
-                                             consume)
-    in do
-        first `shouldBe`
-            SynchronizeTo (MkOffset startVal) (MkSample startVal (head xs))
-        (rest `zip` drop 1 rest) `shouldSatisfy`
+                                         synchronizeToSeqNum MkSeqNumOf
+                                                               (MkSeqNumStart startVal) .|
+                                         consume)
+    first `shouldBe`
+            SynchronizeTo (MkSeqNumStart startVal)
+                          (MkEvent (MkSeqNum startVal) (head xs))
+    (rest `zip` drop 1 rest) `shouldSatisfy`
             all (not .
-                     uncurry (succeeds `on` _sampleTimestamp . fromSynchronized))
+                     uncurry succeeds)

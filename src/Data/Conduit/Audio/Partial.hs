@@ -17,5 +17,5 @@ awaitPart :: Monad m => ConduitM (Part a) b m (Maybe (Int, a))
 awaitPart = fmap (\ (Part !o !x) -> (o, x)) <$> await
 
 leftoverPart :: a -> Int -> ConduitM (Part a) o m ()
-leftoverPart !x !startOffset =
-  leftover (Part startOffset x)
+leftoverPart !x !startSeqNumStart =
+  leftover (Part startSeqNumStart x)

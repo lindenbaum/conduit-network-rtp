@@ -32,11 +32,11 @@ library
                      , Data.MediaBus.BiIndex
                      , Data.MediaBus.Buffer
                      , Data.MediaBus.Clock
-                     , Data.MediaBus.Ordered
+                     , Data.MediaBus.Frame
+                     , Data.MediaBus.Internal.Monotone
+                     , Data.MediaBus.Sequence
                      , Data.MediaBus.RingBuffer
                      , Data.MediaBus.Rtp
-                     , Data.MediaBus.Sample
-                     , Data.MediaBus.Synchronous
   default-language:    Haskell2010
   ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds
   default-extensions:  ApplicativeDo
@@ -94,6 +94,7 @@ library
                      , primitive
                      , process
                      , QuickCheck
+                     , random
                      , resourcet
                      , spool == 0.1
                      , streaming-commons
