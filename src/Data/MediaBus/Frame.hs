@@ -8,6 +8,7 @@ module Data.MediaBus.Frame
     , type MediaSink
     , frameConverter
     , sampleBufferConverter
+    , sampleConverter
     , runMediaC
     , convertMediaC
     , connectMediaC
@@ -51,14 +52,7 @@ sampleBufferConverter f =
 sampleConverter :: (Storable sample, Storable sample', Monad m)
                 => (sample -> sample')
                 -> MediaFilter sample sample' clock m
-sampleConverter f = sampleBufferConverter (MkSampleBuffer .
-                                               fst . unsafeMutateSamples go)
-  where
-    go vIn = do
-        let len = GMV.length vIn
-        vOut <- MV.new len
-        GMV.fold
-        V.unsafeFreeze vOut
+sampleConverter f = sampleBufferConverter (over (sampleVector . each) f)
 
 convertMediaC :: Monad m
               => clock

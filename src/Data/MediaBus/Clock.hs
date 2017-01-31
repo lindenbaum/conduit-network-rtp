@@ -49,7 +49,7 @@ class IsClock c m where
     referenceTimestamp :: c -> ReferenceTime c -> m (Timestamp c)
     nextTimestamp :: c -> ReferenceTime c -> Timestamp c -> m (Timestamp c)
 
-newtype UtcClock = MkClock { utcClockResolution :: NominalDiffTime }
+newtype UtcClock = MkClock { utcClockFrequency :: NominalDiffTime }
     deriving (Show, Eq, Ord)
 
 instance HasClock UtcClock where
@@ -60,8 +60,9 @@ instance HasClock UtcClock where
 instance MonadIO m =>
          IsClock UtcClock m where
     type ReferenceTime UtcClock = UTCTime
-    newtype Timestamp UtcClock = MkUtcTimestamp {utcTimestamp :: NominalDiffTime}
-      deriving (Eq,Show,Ord,Num)
+    newtype Timestamp UtcClock = MkUtcTimestamp{utcTimestamp ::
+                                            NominalDiffTime}
+                           deriving (Eq, Show, Ord, Num)
     referenceTime _ = liftIO getCurrentTime
     zeroTimestamp _ = return 0
     referenceTimestamp (MkClock res) ref =
@@ -70,7 +71,7 @@ instance MonadIO m =>
         ref' <- referenceTime clk
         return (MkUtcTimestamp (diffUTCTime ref' ref / res))
 
-data StaticUtcClock (utcClockResolution :: Nat) = MkStaticUtcClock
+data StaticUtcClock (utcClockFrequency :: Nat) = MkStaticUtcClock
     deriving (Show, Eq, Ord)
 
 instance HasClock (StaticUtcClock u) where
@@ -78,23 +79,24 @@ instance HasClock (StaticUtcClock u) where
     type SetClock (StaticUtcClock u) t = t
     clock = iso id id
 
-instance (KnownNat res, MonadIO m) =>
-         IsClock (StaticUtcClock res) m where
-    type ReferenceTime (StaticUtcClock res) = UTCTime
+instance (KnownNat clockFreq, MonadIO m) =>
+         IsClock (StaticUtcClock clockFreq) m where
+    type ReferenceTime (StaticUtcClock clockFreq) = UTCTime
     newtype Timestamp
-          (StaticUtcClock res) = MkStaticUtcTimestamp{staticUtcTimestamp ::
-                                                      NominalDiffTime}
-                               deriving (Show, Ord, Eq)
+          (StaticUtcClock
+             clockFreq) = MkStaticUtcTimestamp{staticUtcTimestamp ::
+                                               NominalDiffTime}
+                        deriving (Show, Ord, Eq)
     referenceTime _ = liftIO getCurrentTime
     zeroTimestamp _ = return (MkStaticUtcTimestamp 0)
     referenceTimestamp _ ref = do
-        let res = 1 / fromInteger (natVal (Proxy :: Proxy res))
+        let clockFreq = 1 / fromInteger (natVal (Proxy :: Proxy clockFreq))
         return (MkStaticUtcTimestamp (diffUTCTime ref (UTCTime (toEnum 0) 0) /
-                                          res))
+                                          clockFreq))
     nextTimestamp clk ref _t0 = do
-        let res = 1 / fromInteger (natVal (Proxy :: Proxy res))
+        let clockFreq = 1 / fromInteger (natVal (Proxy :: Proxy clockFreq))
         ref' <- referenceTime clk
-        return (MkStaticUtcTimestamp (diffUTCTime ref' ref / res))
+        return (MkStaticUtcTimestamp (diffUTCTime ref' ref / clockFreq))
 
 -- * Media Data Synchronization
 data SynchronizedTo o p =

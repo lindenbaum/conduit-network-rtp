@@ -17,18 +17,14 @@ import           Data.Int
 import qualified Data.Vector.Storable         as V
 import qualified Data.Vector.Storable.Mutable as M
 import           Data.Word
-import           Control.Monad.ST
 
 -- | ALaw encoded samples in a raw 'ByteString'
 newtype Alaw = Alaw B.ByteString
 
-alawToLinear :: MediaFilter ALaw S16 clock m
-alawToLinear = sampleBufferFilter (fst . unsafeMutateSamples )
+alawToLinear :: Monad m => MediaFilter ALaw S16 clock m
+alawToLinear = sampleConverter (MkS16 . decodeAlawFrame . _alawSample)
 
--- | Decode ALaw samples into 16bit, 8kHz PCM.
-alawToLinear :: Alaw -> Pcm8KMono
-alawToLinear (Alaw !bs) =
-    Pcm $ V.fromList $ decodeAlawFrame <$> B.unpack bs
+-- resample8to16kHz :: Monad m =>
 
 -- | Linear interpolation of 8k Alaw to 16k PCM 16bit, note that the filter
 -- needs the last input in order to smooth the transition between buffers.
@@ -64,23 +60,23 @@ linearToAlaw (Pcm !vec) =
 
 decodeAlawFrame :: Word8 -> Int16
 decodeAlawFrame !a' = let !a = a' `xor` 85
-                           !quant_mask = 15
-                           !quant_shift = 4
-                           !seg_mask = 112
-                           !seg_shift = 4
-                           tBase, tAbs, seg :: Int16
-                           !seg = (fromIntegral a .&. seg_mask) `shiftR`
-                               seg_shift
-                           !tBase = (fromIntegral a .&. quant_mask) `shiftL`
-                               quant_shift
-                           !tAbs = case seg of
-                               0 -> tBase + 8
-                               1 -> tBase + 264
-                               _ -> (tBase + 264) `shiftL`
-                                   fromIntegral (seg - 1)
-                           !isPos = testBit a 7
-                       in
-                           if isPos then tAbs else tAbs * (-1)
+                          !quant_mask = 15
+                          !quant_shift = 4
+                          !seg_mask = 112
+                          !seg_shift = 4
+                          tBase, tAbs, seg :: Int16
+                          !seg = (fromIntegral a .&. seg_mask) `shiftR`
+                              seg_shift
+                          !tBase = (fromIntegral a .&. quant_mask) `shiftL`
+                              quant_shift
+                          !tAbs = case seg of
+                              0 -> tBase + 8
+                              1 -> tBase + 264
+                              _ -> (tBase + 264) `shiftL`
+                                  fromIntegral (seg - 1)
+                          !isPos = testBit a 7
+                      in
+                          if isPos then tAbs else tAbs * (-1)
 
 -- | See http://opensource.apple.com//source/tcl/tcl-20/tcl_ext/snack/snack/generic/g711.c
 --

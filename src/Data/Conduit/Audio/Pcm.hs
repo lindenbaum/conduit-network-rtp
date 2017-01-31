@@ -1,4 +1,4 @@
-module Data.MediaBus.Audio.Pcm
+module Data.Conduit.Audio.Pcm
        ( Pcm(..), RawPcm
        , Pcm8KMono, Pcm16KMono, Pcm48KStereo
        , PcmFormat(..), PcmChannels(..), PcmRate(..)
