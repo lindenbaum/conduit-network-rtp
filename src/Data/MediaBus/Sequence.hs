@@ -1,9 +1,9 @@
 module Data.MediaBus.Sequence
-    ( SeqNum(..)
-    , fromSeqNum
-    , SeqNumStart(..)
+    ( SeqNumStart(..)
     , sequenceStart
     , SeqNumOf(..)
+    , type SeqNum
+    , Timestamp(..)
     , reorder
     , synchronizeToSeqNum
     , Discontinous(..)
@@ -18,22 +18,25 @@ import           Control.Lens
 import           Data.Function                   ( on )
 import           System.Random
 
-newtype SeqNum a = MkSeqNum { _fromSeqNum :: a }
-    deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
+-- | A pseudo clock that runs sequence numbers, starting from a random start
+-- value.
+-- | Frame some input to a sequence number.
+data SeqNumOf s = MkSeqNumOf
 
-instance HasTimestamp (SeqNum a) where
-    type GetTimestamp (SeqNum a) = a
-    type SetTimestamp (SeqNum a) b = SeqNum b
-    timestamp = iso _fromSeqNum MkSeqNum
+--newtype SeqNum a = MkSeqNum { _fromSeqNum :: a }
+--    deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
+
+instance HasTimestamp (Timestamp (SeqNumOf a)) where
+    type GetTimestamp (Timestamp (SeqNumOf a)) = (Timestamp (SeqNumOf a))
+    type SetTimestamp (Timestamp (SeqNumOf a)) b = b
+    timestamp = iso id id
 
 instance (Eq a, IsMonotone a) =>
-         Ord (SeqNum a) where
+         Ord (Timestamp (SeqNumOf a)) where
     compare x y
         | x == y = EQ
         | x `succeeds` y = GT
         | otherwise = LT
-
-makeLenses ''SeqNum
 
 -- | An offset, e.g. like the first rndom RTP timestamp to which the following
 -- timestamps relate.
@@ -47,20 +50,18 @@ instance Show s =>
     show (MkSeqNumStart x) =
         "(+|" ++ show x ++ "|)"
 
--- | A pseudo clock that runs sequence numbers, starting from a random start
--- value.
--- | Frame some input to a sequence number.
-data SeqNumOf s = MkSeqNumOf
-
 instance (Num s, Applicative m) =>
          IsClock (SeqNumOf s) m where
     type ReferenceTime (SeqNumOf s) = SeqNumStart s
-    type Timestamp (SeqNumOf s) = SeqNum s
+    newtype Timestamp (SeqNumOf s) = MkSeqNum { _fromSeqNum :: s }
+        deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
     referenceTime _ = pure 0
     nextTimestamp _ _ t0 = pure (t0 + 1)
     zeroTimestamp _ = pure 0
     referenceTimestamp _ (MkSeqNumStart ref) =
         pure (MkSeqNum ref)
+
+type SeqNum a = Timestamp (SeqNumOf a)
 
 synchronizeToSeqNum :: (Monad m, Integral i)
                     => SeqNumOf i

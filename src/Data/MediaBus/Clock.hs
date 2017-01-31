@@ -1,7 +1,6 @@
 module Data.MediaBus.Clock
     ( UtcClock(..)
     , StaticUtcClock(..)
-    , StaticUtcTimestamp(..)
     , IsClock(..)
     , HasClock(..)
     , HasTimestamp(..)
@@ -9,6 +8,7 @@ module Data.MediaBus.Clock
     , eventTimestamp
     , eventContent
     , SynchronizedTo(..)
+    , fromSynchronized
     , synchronizeToClock
     ) where
 
@@ -42,7 +42,7 @@ class SetClock s (GetClock s) ~ s =>
 
 -- | Clocks can generate reference times, and they can convert these to timestamps. Timestamps are mere integrals
 class IsClock c m where
-    type Timestamp c
+    data Timestamp c
     type ReferenceTime c
     referenceTime :: c -> m (ReferenceTime c)
     zeroTimestamp :: c -> m (Timestamp c)
@@ -60,21 +60,18 @@ instance HasClock UtcClock where
 instance MonadIO m =>
          IsClock UtcClock m where
     type ReferenceTime UtcClock = UTCTime
-    type Timestamp UtcClock = NominalDiffTime
+    newtype Timestamp UtcClock = MkUtcTimestamp {utcTimestamp :: NominalDiffTime}
+      deriving (Eq,Show,Ord,Num)
     referenceTime _ = liftIO getCurrentTime
     zeroTimestamp _ = return 0
     referenceTimestamp (MkClock res) ref =
-        return (diffUTCTime ref (UTCTime (toEnum 0) 0) / res)
+        return (MkUtcTimestamp (diffUTCTime ref (UTCTime (toEnum 0) 0) / res))
     nextTimestamp clk@(MkClock res) ref _t0 = do
         ref' <- referenceTime clk
-        return (diffUTCTime ref' ref / res)
+        return (MkUtcTimestamp (diffUTCTime ref' ref / res))
 
 data StaticUtcClock (utcClockResolution :: Nat) = MkStaticUtcClock
     deriving (Show, Eq, Ord)
-
-data StaticUtcTimestamp (utcClockResolution :: Nat) =
-      MkStaticUtcTimestamp { utcTimestamp :: NominalDiffTime }
-    deriving (Show, Ord, Eq)
 
 instance HasClock (StaticUtcClock u) where
     type GetClock (StaticUtcClock u) = StaticUtcClock u
@@ -84,7 +81,10 @@ instance HasClock (StaticUtcClock u) where
 instance (KnownNat res, MonadIO m) =>
          IsClock (StaticUtcClock res) m where
     type ReferenceTime (StaticUtcClock res) = UTCTime
-    type Timestamp (StaticUtcClock res) = StaticUtcTimestamp res
+    newtype Timestamp
+          (StaticUtcClock res) = MkStaticUtcTimestamp{staticUtcTimestamp ::
+                                                      NominalDiffTime}
+                               deriving (Show, Ord, Eq)
     referenceTime _ = liftIO getCurrentTime
     zeroTimestamp _ = return (MkStaticUtcTimestamp 0)
     referenceTimestamp _ ref = do
@@ -98,11 +98,13 @@ instance (KnownNat res, MonadIO m) =>
 
 -- * Media Data Synchronization
 data SynchronizedTo o p =
-      SynchronizeTo { syncRef          :: o
-                    , fromSynchronized :: p
+      SynchronizeTo { syncRef           :: o
+                    , _fromSynchronized :: p
                     }
-    | Synchronized { fromSynchronized :: p }
+    | Synchronized { _fromSynchronized :: p }
     deriving (Eq)
+
+makeLenses ''SynchronizedTo
 
 instance (Show o, Show p) =>
          Show (SynchronizedTo o p) where
@@ -116,9 +118,21 @@ instance Functor (SynchronizedTo o) where
     fmap f (Synchronized p) =
         Synchronized (f p)
 
+instance HasTimestamp p =>
+         HasTimestamp (SynchronizedTo o p) where
+    type SetTimestamp (SynchronizedTo o p) t = SynchronizedTo o (SetTimestamp p t)
+    type GetTimestamp (SynchronizedTo o p) = GetTimestamp p
+    timestamp = fromSynchronized . timestamp
+
+instance HasClock p =>
+         HasClock (SynchronizedTo o p) where
+    type SetClock (SynchronizedTo o p) c = SynchronizedTo o (SetClock p c)
+    type GetClock (SynchronizedTo o p) = GetClock p
+    clock = fromSynchronized . clock
+
 instance (IsMonotone p) =>
          IsMonotone (SynchronizedTo o p) where
-    succeeds = succeeds `on` fromSynchronized
+    succeeds = succeeds `on` _fromSynchronized
 
 data Event t b = MkEvent { _eventTimestamp :: t
                          , _eventContent   :: b

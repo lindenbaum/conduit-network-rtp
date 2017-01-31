@@ -2,20 +2,19 @@
 
 module Data.MediaBus.Basics
     ( IdentifiedBy(..)
-    , HasIdentifiedBy(..)
+    , identifier
+    , unIdentified
     ) where
-
---    , Event(..)
 import           Control.Lens
 
 -- | Things that can be uniquely identified by a looking at a (much simpler)
 -- representation, the 'identity'.
-data IdentifiedBy i c = MkIdentifiedBy { identifier   :: i
-                                       , unIdentified :: c
+data IdentifiedBy i c = MkIdentifiedBy { _identifier   :: i
+                                       , _unIdentified :: c
                                        }
     deriving (Show)
 
-makeClassy ''IdentifiedBy
+makeLenses ''IdentifiedBy
 
 instance Functor (IdentifiedBy i) where
     fmap f (MkIdentifiedBy i c) =
