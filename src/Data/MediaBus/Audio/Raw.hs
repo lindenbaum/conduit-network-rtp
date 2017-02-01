@@ -75,7 +75,7 @@ instance HasChannelLayout ULaw where
     channelLayout _ = SingleChannel
 
 newtype S16 = MkS16 {s16Sample :: Int16}
-    deriving (Show, Storable)
+    deriving (Show, Storable, Num, Eq, Ord)
 
 makeLenses ''S16
 

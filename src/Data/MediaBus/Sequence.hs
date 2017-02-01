@@ -1,7 +1,7 @@
 module Data.MediaBus.Sequence
     ( SeqNumStart(..)
     , sequenceStart
-    , SeqNumOf(..)
+    , SeqNumOf
     , type SeqNum
     , Timestamp(..)
     , reorder
@@ -21,7 +21,7 @@ import           System.Random
 -- | A pseudo clock that runs sequence numbers, starting from a random start
 -- value.
 -- | Frame some input to a sequence number.
-data SeqNumOf s = MkSeqNumOf
+data SeqNumOf s
 
 --newtype SeqNum a = MkSeqNum { _fromSeqNum :: a }
 --    deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
@@ -50,9 +50,11 @@ instance Show s =>
     show (MkSeqNumStart x) =
         "(+|" ++ show x ++ "|)"
 
-instance (Num s, Applicative m) =>
+instance (Show s, Num s, Applicative m) =>
          IsClock (SeqNumOf s) m where
     type ReferenceTime (SeqNumOf s) = SeqNumStart s
+    type GetSampleRate (SeqNumOf s) = 1
+    type SetSampleRate (SeqNumOf s) t = SeqNumOf s
     newtype Timestamp (SeqNumOf s) = MkSeqNum { _fromSeqNum :: s }
         deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
     referenceTime _ = pure 0
@@ -63,10 +65,10 @@ instance (Num s, Applicative m) =>
 
 type SeqNum a = Timestamp (SeqNumOf a)
 
-synchronizeToSeqNum :: (Monad m, Integral i)
-                    => SeqNumOf i
+synchronizeToSeqNum :: (Monad m, Show i, Integral i)
+                    => proxy (SeqNumOf i)
                     -> SeqNumStart i
-                    -> ConduitM a (SynchronizedTo (SeqNumStart i) (Event (SeqNum i) a)) m ()
+                    -> ConduitM a (SynchronizedTo (SeqNumStart i) (SeqNum i) a) m ()
 synchronizeToSeqNum = synchronizeToClock
 
 -- | Buffer incoming samples in a queue of the given size and output them in

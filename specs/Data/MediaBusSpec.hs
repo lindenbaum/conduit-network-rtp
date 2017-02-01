@@ -6,8 +6,8 @@ import           Data.List         ( sort )
 import           Data.Word
 import           Test.Hspec
 import           Test.QuickCheck
-import           Data.Time.Clock
 import           Data.MediaBus
+import           Data.Proxy
 
 -- ----------------------------------------------------------------------
 -- * Rtp Prototype
@@ -30,38 +30,11 @@ newtype RtpPayloadType = MkRtpPayloadType { fromRtpPayloadType :: Word8 }
     deriving (Show, Eq, Num)
 
 data RawRtpPacket = MkRawRtpPacket { rawRtpSeqNumNumber :: RtpSeqNum
-                                   , rawRtpTimestamp      :: RtpTimestamp
-                                   , rawRtpSsrc           :: RtpSsrc
-                                   , rawRtpPayload        :: RtpPayload
+                                   , rawRtpTimestamp    :: RtpTimestamp
+                                   , rawRtpSsrc         :: RtpSsrc
+                                   , rawRtpPayload      :: RtpPayload
                                    }
     deriving Show
-
-type RawRtpPacketSource = NetworkSource RawRtpPacket
-
-data RtpClockReference =
-      RtpTimestampReference UtcClock (SeqNumStart RtpTimestamp)
-    | RtpSeqNumReference (SeqNumStart RtpSeqNum)
-    deriving Show
-
-type RtpFrame = Frame (RtpSeqNum, RtpTimestamp) RtpPayload
-
-newtype OnRtpSeqNum = MkOnRtpSeqNum { unOnRtpSeqNum :: RtpFrame }
-
-type SyncRtpFrame = SynchronizedTo RtpClockReference RtpFrame
-
-type SyncRtpSource = IdentifiedBy RtpSsrc SyncRtpFrame
-
-data IpPort = MkIpPort
-
-data NtpTime = MkNtpTime
-
-data RawData = MkRawData
-
-type NetworkSource a = IdentifiedBy IpPort (UTCSyncFrame a)
-
-type UTCSyncFrame a = SynchronizedTo (SeqNumStart UTCTime) (Frame DiffTime a)
-
-type RawDataNetworkSource = NetworkSource RawData
 
 -- -----------------------------------------------------------------------------
 -- * Tests/Specs
@@ -118,18 +91,16 @@ synchronizeToSeqNumSpec =
         it "produces dense, strictly monotonic output" $
             property synchronizeToSeqNumIsMonotone
 
-synchronizeToSeqNumIsMonotone :: (NonEmptyList [Bool])
-                                -> Word64
-                                -> Expectation
+synchronizeToSeqNumIsMonotone :: (NonEmptyList [Bool]) -> Word64 -> Expectation
 synchronizeToSeqNumIsMonotone (NonEmpty xs) startVal = do
     let inEvents = sourceList xs
         (first : rest) = runConduitPure (inEvents .|
-                                         synchronizeToSeqNum MkSeqNumOf
-                                                               (MkSeqNumStart startVal) .|
-                                         consume)
+                                             synchronizeToSeqNum Proxy
+                                                                 (MkSeqNumStart startVal) .|
+                                             consume)
     first `shouldBe`
-            SynchronizeTo (MkSeqNumStart startVal)
-                          (MkEvent (MkSeqNum startVal) (head xs))
+        SynchronizeTo (MkSeqNumStart startVal)
+                      (MkEvent (MkSeqNum startVal) (head xs))
     (rest `zip` drop 1 rest) `shouldSatisfy`
-            all (not .
-                     uncurry succeeds)
+        all (not .
+                 uncurry succeeds)

@@ -5,10 +5,10 @@ module Data.MediaBus.Audio.Alaw
     , linearToAlaw
     ) where
 
-import Data.MediaBus.Frame
-import Data.MediaBus.Sample
-import Data.MediaBus.Clock
-import Data.MediaBus.Audio.Raw
+import           Data.MediaBus.Frame
+import           Data.MediaBus.Sample
+import           Data.MediaBus.Clock
+import           Data.MediaBus.Audio.Raw
 
 import           Data.Conduit.Audio.Pcm
 import           Data.Bits
@@ -21,10 +21,12 @@ import           Data.Word
 -- | ALaw encoded samples in a raw 'ByteString'
 newtype Alaw = Alaw B.ByteString
 
-alawToLinear :: Monad m => MediaFilter ALaw S16 clock m
+alawToLinear :: Monad m => MediaFilter ALaw S16 clock clock m
 alawToLinear = sampleConverter (MkS16 . decodeAlawFrame . _alawSample)
 
--- resample8to16kHz :: Monad m =>
+resample8to16kHz :: (GetSampleRate c ~ 8000, GetSampleRate c' ~ 16000, Num s, Monad m)
+                 => MediaSource (Frame s c) s c' m
+resample8to16kHz = undefined
 
 -- | Linear interpolation of 8k Alaw to 16k PCM 16bit, note that the filter
 -- needs the last input in order to smooth the transition between buffers.

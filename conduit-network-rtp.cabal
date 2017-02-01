@@ -28,6 +28,7 @@ library
                      -- ,
                        Data.MediaBus
                      , Data.MediaBus.Audio.Raw
+                     , Data.MediaBus.Audio.Alaw
                      , Data.MediaBus.Basics
                      , Data.MediaBus.Clock
                      , Data.MediaBus.Frame
