@@ -37,6 +37,26 @@ instance HasTimestamp NominalDiffTime where
     type SetTimestamp NominalDiffTime t = t
     timestamp = iso id id
 
+class (KnownNat (GetRate t), SetRate t (GetRate t) ~ t) =>
+      IsTiming t where
+    type GetRate t :: Nat
+    type SetRate t (n :: Nat)
+    data Ticks t
+    nominalDiffTime :: Iso' NominalDiffTime (Ticks t)
+
+data Timing (rate :: Nat) (w :: Type) = MkTiming
+
+instance (Integral w, KnownNat rate, IsMonotone w, Num w, Show w) =>
+         IsTiming (Timing rate w) where
+    type GetRate (Timing rate w) = rate
+    type SetRate (Timing rate w) rate' = Timing rate'
+    data Ticks (Timing rate w) = MkTicks{fromTicks :: w}
+    nominalDiffTime = iso (MkTicks . fromNDT) (toNDT . fromTicks)
+      where
+        toNDT = (* rate) . fromIntegral
+        fromNDT = round . (/ rate)
+        rate = fromInteger $ natVal (Proxy :: Proxy rate)
+
 -- | Clocks can generate reference times, and they can convert these to timestamps. Timestamps are mere integrals
 class (Show (ReferenceTime c), Show (Timestamp c), KnownNat (GetSampleRate c), IsMonotone (Timestamp c)) =>
       IsClock c m where
