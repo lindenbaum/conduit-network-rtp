@@ -1,64 +1,30 @@
 module Data.MediaBus.Audio.Alaw
-    ( Alaw(..)
-    , alawToLinear
-    , alawToLinear16k
-    , linearToAlaw
+    ( ALaw(..)
+    , alawSample
     ) where
 
 import           Data.MediaBus.Frame
 import           Data.MediaBus.Sample
-import           Data.MediaBus.Clock
 import           Data.MediaBus.Audio.Raw
-
-import           Data.Conduit.Audio.Pcm
+import           Data.MediaBus.Audio.Channels
 import           Data.Bits
-import qualified Data.ByteString              as B
-import           Data.Int
-import qualified Data.Vector.Storable         as V
-import qualified Data.Vector.Storable.Mutable as M
 import           Data.Word
+import           Data.Int
+import           Control.Lens
 
--- | ALaw encoded samples in a raw 'ByteString'
-newtype Alaw = Alaw B.ByteString
+newtype ALaw = MkALaw { _alawSample :: Word8 }
+    deriving (Show, Storable, Num, Eq, Bits)
 
-alawToLinear :: Monad m => MediaFilter ALaw S16 clock clock m
-alawToLinear = sampleConverter (MkS16 . decodeAlawFrame . _alawSample)
+makeLenses ''ALaw
 
-resample8to16kHz :: (GetSampleRate c ~ 8000, GetSampleRate c' ~ 16000, Num s, Monad m)
-                 => MediaSource (Frame s c) s c' m
-resample8to16kHz = undefined
+instance HasChannelLayout ALaw where
+    channelLayout _ = SingleChannel
 
--- | Linear interpolation of 8k Alaw to 16k PCM 16bit, note that the filter
--- needs the last input in order to smooth the transition between buffers.
-alawToLinear16k :: Int16 -> Alaw -> (Int16, Pcm16KMono)
-alawToLinear16k lastVal (Alaw !bs) =
-    retLast $
-        pcmModify interpolate $
-            Pcm $ V.fromList (twice . decodeAlawFrame =<< B.unpack bs)
-  where
-    retLast p@(Pcm v) = (V.last v, p)
-    twice !x = [ 0, x ]
-    interpolate :: forall s. V.MVector s Int16 -> ST s ()
-    interpolate !v = go (M.length v)
-      where
-        go :: Int -> ST s ()
-        go !len = loop 0 lastVal
-          where
-            loop :: Int -> Int16 -> ST s ()
-            loop !i !prev
-                | (i + 1) >= len = return ()
-                | otherwise = do
-                      !next <- M.unsafeRead v (i + 1)
-                      M.unsafeWrite v
-                                    i
-                                    ((next `unsafeShiftR` 1) +
-                                         (prev `unsafeShiftR` 1))
-                      loop (i + 2) next
+instance Transcoder ALaw S16 clock where
+    transcode = sampleFilter (MkS16 . decodeAlawFrame . _alawSample)
 
--- | Convert 8kHz Mono 16bit to ALaw.
-linearToAlaw :: Pcm8KMono -> Alaw
-linearToAlaw (Pcm !vec) =
-    Alaw $ B.pack $ encodeAlawFrame <$> V.toList vec
+instance Transcoder S16 ALaw clock where
+    transcode = sampleFilter (MkALaw . encodeAlawFrame . _s16Sample)
 
 decodeAlawFrame :: Word8 -> Int16
 decodeAlawFrame !a' = let !a = a' `xor` 85
@@ -132,4 +98,4 @@ encodeAlawFrame !pcmVal' =
                         (shiftL segment 4) .|.
                             (shiftR pcmValAbs segShift .&. 0xF)
     in
-        (fromIntegral res) `xor` mask
+        fromIntegral res `xor` mask

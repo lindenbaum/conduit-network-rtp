@@ -1,5 +1,5 @@
 module Data.MediaBus.Clock
-    ( UtcClock
+    ( UtcClock(..)
     , ticks
     , IsClock(..)
     , HasTimestamp(..)
@@ -9,6 +9,7 @@ module Data.MediaBus.Clock
     , SynchronizedTo(..)
     , fromSynchronized
     , synchronizeToClock
+    , type GetClock
     ) where
 
 import           Conduit
@@ -18,8 +19,8 @@ import           Data.Proxy
 import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Function                   ( on )
-
 import           Data.MediaBus.Internal.Monotone
+import           Data.Word
 
 -- | A type class for things that have a time stamp
 class SetTimestamp s (GetTimestamp s) ~ s =>
@@ -27,6 +28,8 @@ class SetTimestamp s (GetTimestamp s) ~ s =>
     type SetTimestamp s t
     type GetTimestamp s
     timestamp :: Lens s (SetTimestamp s t) (GetTimestamp s) t
+    timestamp' :: Lens' s (GetTimestamp s)
+    timestamp' = timestamp
 
 instance HasTimestamp NominalDiffTime where
     type GetTimestamp NominalDiffTime = NominalDiffTime
@@ -34,7 +37,7 @@ instance HasTimestamp NominalDiffTime where
     timestamp = iso id id
 
 -- | Clocks can generate reference times, and they can convert these to timestamps. Timestamps are mere integrals
-class (Show (ReferenceTime c), Show (Timestamp c), KnownNat (GetSampleRate c)) =>
+class (Show (ReferenceTime c), Show (Timestamp c), KnownNat (GetSampleRate c), IsMonotone (Timestamp c)) =>
       IsClock c m where
     data Timestamp c -- TODO: rename to Ticks
     type ReferenceTime c -- TODO: rename to AbsoluteTime
@@ -43,30 +46,32 @@ class (Show (ReferenceTime c), Show (Timestamp c), KnownNat (GetSampleRate c)) =
     referenceTime :: proxy c -> m (ReferenceTime c)
     zeroTimestamp :: proxy c -> m (Timestamp c)
     referenceTimestamp :: proxy c -> ReferenceTime c -> m (Timestamp c)
-    nextTimestamp :: proxy c -> ReferenceTime c -> Timestamp c -> m (Timestamp c)
+    nextTimestamp :: proxy c
+                  -> ReferenceTime c
+                  -> Timestamp c
+                  -> m (Timestamp c)
 
-data UtcClock (sampleRate :: Nat)
+data UtcClock (sampleRate :: Nat) = MkUtcClock
 
 instance (KnownNat clockFreq, MonadIO m) =>
          IsClock (UtcClock clockFreq) m where
     type ReferenceTime (UtcClock clockFreq) = UTCTime
     type GetSampleRate (UtcClock clockFreq) = clockFreq
     type SetSampleRate (UtcClock clockFreq) f = UtcClock f
-    newtype Timestamp (UtcClock clockFreq) = MkTicks{_ticks ::
-                                                 NominalDiffTime}
-                                       deriving (Show, Ord, Eq, Num)
+    newtype Timestamp (UtcClock clockFreq) = MkTicks{_ticks :: Word64}
+                                       deriving (Show, Ord, Eq, Num, IsMonotone)
     referenceTime _ = liftIO getCurrentTime
     zeroTimestamp _ = return (MkTicks 0)
     referenceTimestamp _ ref = do
-        let clockFreq = 1 / fromInteger (natVal (Proxy :: Proxy clockFreq))
-        return (MkTicks (diffUTCTime ref (UTCTime (toEnum 0) 0) /
-                             clockFreq))
+        let clockFreq = fromInteger (natVal (Proxy :: Proxy clockFreq))
+        return (MkTicks (round (diffUTCTime ref (UTCTime (toEnum 0) 0) *
+                                    clockFreq)))
     nextTimestamp clk ref _t0 = do
-        let clockFreq = 1 / fromInteger (natVal (Proxy :: Proxy clockFreq))
+        let clockFreq = fromInteger (natVal (Proxy :: Proxy clockFreq))
         ref' <- referenceTime clk
-        return (MkTicks (diffUTCTime ref' ref / clockFreq))
+        return (MkTicks (round (diffUTCTime ref' ref * clockFreq)))
 
-ticks :: Lens' (Timestamp (UtcClock r)) NominalDiffTime
+ticks :: Lens' (Timestamp (UtcClock r)) Word64
 ticks = iso _ticks MkTicks
 
 data Event t b = MkEvent { _eventTimestamp :: t
@@ -101,7 +106,7 @@ instance Functor (Event t) where
     fmap f (MkEvent t x) = MkEvent t (f x)
 
 -- * Media Data Synchronization
-data SynchronizedTo ref ts  p =
+data SynchronizedTo ref ts p =
       SynchronizeTo { syncRef           :: ref
                     , _fromSynchronized :: Event ts p
                     }
@@ -126,6 +131,9 @@ instance HasTimestamp (SynchronizedTo r t p) where
     type SetTimestamp (SynchronizedTo r t p) t' = SynchronizedTo r t' p
     type GetTimestamp (SynchronizedTo r t p) = t
     timestamp = fromSynchronized . timestamp
+
+type family GetClock t where
+        GetClock (Timestamp c) = c
 
 instance (IsMonotone t) =>
          IsMonotone (SynchronizedTo r t p) where

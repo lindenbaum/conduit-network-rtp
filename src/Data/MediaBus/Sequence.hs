@@ -50,7 +50,7 @@ instance Show s =>
     show (MkSeqNumStart x) =
         "(+|" ++ show x ++ "|)"
 
-instance (Show s, Num s, Applicative m) =>
+instance (IsMonotone s, Show s, Num s, Applicative m) =>
          IsClock (SeqNumOf s) m where
     type ReferenceTime (SeqNumOf s) = SeqNumStart s
     type GetSampleRate (SeqNumOf s) = 1
@@ -65,7 +65,7 @@ instance (Show s, Num s, Applicative m) =>
 
 type SeqNum a = Timestamp (SeqNumOf a)
 
-synchronizeToSeqNum :: (Monad m, Show i, Integral i)
+synchronizeToSeqNum :: (IsMonotone i, Monad m, Show i, Integral i)
                     => proxy (SeqNumOf i)
                     -> SeqNumStart i
                     -> ConduitM a (SynchronizedTo (SeqNumStart i) (SeqNum i) a) m ()

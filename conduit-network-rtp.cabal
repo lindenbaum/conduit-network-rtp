@@ -29,6 +29,8 @@ library
                        Data.MediaBus
                      , Data.MediaBus.Audio.Raw
                      , Data.MediaBus.Audio.Alaw
+                     , Data.MediaBus.Audio.Channels
+                     , Data.MediaBus.Audio.Resample
                      , Data.MediaBus.Basics
                      , Data.MediaBus.Clock
                      , Data.MediaBus.Frame
@@ -109,7 +111,8 @@ test-suite tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      specs
   main-is:             Spec.hs
-  other-modules:       Data.MediaBus.Internal.BiIndexSpec
+  other-modules:       Data.MediaBus.Audio.ResampleSpec
+                     , Data.MediaBus.Internal.BiIndexSpec
                      , Data.MediaBus.Internal.RingBufferSpec
                      , Data.MediaBus.FrameSpec
                      , Data.MediaBus.SampleSpec

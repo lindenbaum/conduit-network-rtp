@@ -1,84 +1,126 @@
+{-# LANGUAGE UndecidableInstances #-}
+
 module Data.MediaBus.Frame
     ( Frame(..)
+    , type FrameBuffer
     , frame
-    , MediaC(..)
-    , type MediaSource
-    , type MediaFilter
-    , type MediaSink
-    , frameConverter
-    , sampleBufferConverter
-    , sampleConverter
-    , statefulConverter
-    , runMediaC
+    , FrameC(..)
+    , type FrameSource
+    , frameSource
+    , frameSourceM
+    , type FrameFilter
+    , frameFilter
+    , frameFilterM
+    , type FrameBufferFilter
+    , frameBufferFilter
+    , frameBufferFilterM
+    , sampleFilter
+    , sampleFilterM
+    , type FrameSink
+    , frameSink
+    , frameSinkM
+    , runFrameC
     , connectMediaC
+    , Transcoder (..)
     ) where
 
-import qualified Data.Vector.Storable             as V
-import qualified Data.Vector.Storable.Mutable     as MV
-import qualified Data.Vector.Generic.Mutable      as GMV
 import           Conduit
+import           Control.Monad
 import           Control.Lens
-import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State.Strict
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Internal.Monotone
 import           Data.Function                    ( on )
-import Conduit
+import           Data.Kind
 
-newtype MediaC i o m = MkMediaC { runMediaC :: Conduit i m o }
+newtype FrameC i o m = MkFrameC { runFrameC :: ConduitM i o m ()}
 
-type MediaSource i sample clock m = MediaC i (Frame sample clock) m
+type FrameSource i sample clock m = FrameC i (Frame sample clock) m
 
-type MediaFilter sample sample' clock clock' m = MediaC (Frame sample clock) (Frame sample' clock') m
+frameSource :: Monad m
+            => (i -> Frame sample clock)
+            -> FrameSource i sample clock m
+frameSource f = MkFrameC (awaitForever (yield . f))
 
-type MediaSink sample clock o m = MediaC (Frame sample clock) o m
+frameSourceM :: Monad m
+             => (i -> m (Frame sample clock))
+             -> FrameSource i sample clock m
+frameSourceM f = MkFrameC (awaitForever (lift . f >=> yield))
 
-frameConverter :: Monad m
-               => (Frame sample clock -> Frame sample' clock')
-               -> MediaC (Frame sample clock) (Frame sample' clock') m
-frameConverter f = MkMediaC (awaitForever (yield . f))
+type FrameFilter sample sample' clock clock' m = FrameC (Frame sample clock) (Frame sample' clock') m
 
-sampleBufferConverter :: (Storable sample, Storable sample', Monad m)
-                      => (SampleBuffer sample -> SampleBuffer sample')
-                      -> MediaC (Frame sample clock) (Frame sample' clock) m
-sampleBufferConverter f =
-    frameConverter (over sampleBuffer f)
+frameFilter :: Monad m
+            => (Frame sample clock -> Frame sample' clock')
+            -> FrameC (Frame sample clock) (Frame sample' clock') m
+frameFilter = frameSource
 
-sampleConverter :: (Storable sample, Storable sample', Monad m)
-                => (sample -> sample')
-                -> MediaC (Frame sample clock) (Frame sample' clock) m
-sampleConverter f = sampleBufferConverter (over (sampleVector . each) f)
+frameFilterM :: Monad m
+             => (Frame sample clock -> m (Frame sample' clock'))
+             -> FrameC (Frame sample clock) (Frame sample' clock') m
+frameFilterM = frameSourceM
 
-statefulConverter :: Monad m
-                  => (Frame sample (clock :: k) -> State st (Frame sample' (clock' :: k)))
-                  -> st
-                  -> MediaC (Frame sample clock) (Frame sample' clock') m
-statefulConverter f stIn =
-    MkMediaC (evalStateC stIn (awaitForever go))
-  where
-    go frm = do
-        st <- lift get
-        let (frm', st') = runState (f frm) st
-        lift (put st')
-        yield frm'
+type FrameBufferFilter sample sample' clock clock' m = FrameC (FrameBuffer sample clock) (FrameBuffer sample' clock') m
 
-connectMediaC :: Monad m => MediaC i b m -> MediaC b o m -> MediaC i o m
-connectMediaC (MkMediaC source) (MkMediaC sink) =
-    MkMediaC (source .| sink)
+frameBufferFilter :: (Storable sample, Storable sample', Monad m)
+                  => (SampleBuffer sample -> SampleBuffer sample')
+                  -> FrameBufferFilter sample sample' clock clock m
+frameBufferFilter f = frameFilter (over sampleBuffer f)
+
+frameBufferFilterM :: (Storable sample, Storable sample', Monad m)
+                   => (SampleBuffer sample -> m (SampleBuffer sample'))
+                   -> FrameBufferFilter sample sample' clock clock m
+frameBufferFilterM f = frameFilterM $
+    \frm -> do
+        let buffer = frm ^. sampleBuffer
+        buffer' <- f buffer
+        return (frm & sampleBuffer .~ buffer')
+
+sampleFilter :: (Storable sample, Storable sample', Monad m)
+             => (sample -> sample')
+             -> FrameBufferFilter sample sample' clock clock m
+sampleFilter f = frameBufferFilter (over (sampleVector . each) f)
+
+sampleFilterM :: (Storable sample, Storable sample', Monad m)
+              => (sample -> m sample')
+              -> FrameBufferFilter sample sample' clock clock m
+sampleFilterM f = frameBufferFilterM $ mapMOf (sampleVector . each) f
+
+type FrameSink sample clock o m = FrameC (Frame sample clock) o m
+
+frameSink :: Monad m => (Frame sample clock -> o) -> FrameSink sample clock o m
+frameSink f = MkFrameC (awaitForever (yield . f))
+
+frameSinkM :: Monad m
+           => (Frame sample clock -> m o)
+           -> FrameSink sample clock o m
+frameSinkM f = MkFrameC (awaitForever (lift . f >=> yield))
+
+connectMediaC :: Monad m => FrameC i b m -> FrameC b o m -> FrameC i o m
+connectMediaC (MkFrameC source) (MkFrameC sink) =
+    MkFrameC (source .| sink)
 
 -- | A 'Frame' can be anything that has a start time and is exactly one time
 -- unit long, it can respresent anything ranging from an audio buffer with 20ms
 -- of audio to a single pulse coded audio sample, of course it could also be a
 -- video frame or a chat message.
-newtype Frame sample clock =
-      MkFrame { _frame :: SynchronizedTo (ReferenceTime clock) (Timestamp clock) (SampleBuffer sample)
+newtype Frame content (clock :: Type) =
+      MkFrame { _frame :: SynchronizedTo (ReferenceTime clock) (Timestamp clock) content
               }
+
+type FrameBuffer sample clock = Frame (SampleBuffer sample) clock
 
 makeLenses ''Frame
 
-instance Storable sample =>
-         HasSampleBuffer (Frame sample clock) where
-    type SetSampleType (Frame sample clock) t = Frame t clock
-    type GetSampleType (Frame sample clock) = sample
-    sampleBuffer = frame . fromSynchronized . eventContent
+instance IsMonotone (Timestamp clock) =>
+         IsMonotone (Frame s (clock :: Type)) where
+    succeeds = succeeds `on` view (frame . timestamp')
+
+instance HasSampleBuffer content =>
+         HasSampleBuffer (Frame content clock) where
+    type SetSampleType (Frame content clock) t = Frame (SetSampleType content t) clock
+    type GetSampleType (Frame content clock) = GetSampleType content
+    sampleBuffer = frame . fromSynchronized . eventContent . sampleBuffer
+
+class Transcoder from to clock where
+  transcode :: Monad m => FrameBufferFilter from to clock clock m
