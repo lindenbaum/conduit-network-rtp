@@ -17,15 +17,15 @@ import           Data.MediaBus.Internal.Monotone
 import           Control.Lens
 import           Data.Function                   ( on )
 import           System.Random
+import           GHC.TypeLits
 
 -- | A pseudo clock that runs sequence numbers, starting from a random start
 -- value.
 -- | Frame some input to a sequence number.
-data SeqNumOf s
+data SeqNumOf s = MkSeqNumOf
 
 --newtype SeqNum a = MkSeqNum { _fromSeqNum :: a }
 --    deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
-
 instance HasTimestamp (Timestamp (SeqNumOf a)) where
     type GetTimestamp (Timestamp (SeqNumOf a)) = (Timestamp (SeqNumOf a))
     type SetTimestamp (Timestamp (SeqNumOf a)) b = b
@@ -50,18 +50,33 @@ instance Show s =>
     show (MkSeqNumStart x) =
         "(+|" ++ show x ++ "|)"
 
-instance (IsMonotone s, Show s, Num s, Applicative m) =>
+instance (IsMonotone s, Show s, Num s, Integral s, Applicative m) =>
          IsClock (SeqNumOf s) m where
     type ReferenceTime (SeqNumOf s) = SeqNumStart s
     type GetSampleRate (SeqNumOf s) = 1
     type SetSampleRate (SeqNumOf s) t = SeqNumOf s
-    newtype Timestamp (SeqNumOf s) = MkSeqNum { _fromSeqNum :: s }
-        deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
+    newtype Timestamp (SeqNumOf s) = MkSeqNum{_fromSeqNum :: s}
+                               deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone,
+                                         Arbitrary)
     referenceTime _ = pure 0
     nextTimestamp _ _ t0 = pure (t0 + 1)
     zeroTimestamp _ = pure 0
     referenceTimestamp _ (MkSeqNumStart ref) =
         pure (MkSeqNum ref)
+    referenceTimeAtNewRate clk rateOutPx (MkSeqNumStart refIn) =
+        let rateIn = getClockRate clk
+            rateOut = natVal rateOutPx
+            refOut = MkSeqNumStart (fromInteger ((toInteger refIn * rateIn) `div`
+                                                     rateOut))
+        in
+            pure refOut
+    timestampAtNewRate clk rateOutPx (MkSeqNum sIn) =
+        let rateIn = getClockRate clk
+            rateOut = natVal rateOutPx
+            sOut = MkSeqNum (fromInteger ((toInteger sIn * rateIn) `div`
+                                              rateOut))
+        in
+            pure sOut
 
 type SeqNum a = Timestamp (SeqNumOf a)
 

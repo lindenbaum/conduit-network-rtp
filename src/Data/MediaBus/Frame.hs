@@ -20,8 +20,8 @@ module Data.MediaBus.Frame
     , frameSink
     , frameSinkM
     , runFrameC
-    , connectMediaC
-    , Transcoder (..)
+    , connectFrameC
+    , Transcoder(..)
     ) where
 
 import           Conduit
@@ -34,7 +34,7 @@ import           Data.MediaBus.Internal.Monotone
 import           Data.Function                    ( on )
 import           Data.Kind
 
-newtype FrameC i o m = MkFrameC { runFrameC :: ConduitM i o m ()}
+newtype FrameC i o m = MkFrameC { runFrameC :: ConduitM i o m () }
 
 type FrameSource i sample clock m = FrameC i (Frame sample clock) m
 
@@ -52,7 +52,7 @@ type FrameFilter sample sample' clock clock' m = FrameC (Frame sample clock) (Fr
 
 frameFilter :: Monad m
             => (Frame sample clock -> Frame sample' clock')
-            -> FrameC (Frame sample clock) (Frame sample' clock') m
+            -> FrameFilter sample sample' clock clock' m
 frameFilter = frameSource
 
 frameFilterM :: Monad m
@@ -96,8 +96,8 @@ frameSinkM :: Monad m
            -> FrameSink sample clock o m
 frameSinkM f = MkFrameC (awaitForever (lift . f >=> yield))
 
-connectMediaC :: Monad m => FrameC i b m -> FrameC b o m -> FrameC i o m
-connectMediaC (MkFrameC source) (MkFrameC sink) =
+connectFrameC :: Monad m => FrameC i b m -> FrameC b o m -> FrameC i o m
+connectFrameC (MkFrameC source) (MkFrameC sink) =
     MkFrameC (source .| sink)
 
 -- | A 'Frame' can be anything that has a start time and is exactly one time
@@ -123,4 +123,4 @@ instance HasSampleBuffer content =>
     sampleBuffer = frame . fromSynchronized . eventContent . sampleBuffer
 
 class Transcoder from to clock where
-  transcode :: Monad m => FrameBufferFilter from to clock clock m
+    transcode :: Monad m => FrameBufferFilter from to clock clock m

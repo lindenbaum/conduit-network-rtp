@@ -2,6 +2,7 @@ module Data.MediaBus.Clock
     ( UtcClock(..)
     , ticks
     , IsClock(..)
+    , getClockRate
     , HasTimestamp(..)
     , Event(..)
     , eventTimestamp
@@ -50,6 +51,22 @@ class (Show (ReferenceTime c), Show (Timestamp c), KnownNat (GetSampleRate c), I
                   -> ReferenceTime c
                   -> Timestamp c
                   -> m (Timestamp c)
+    referenceTimeAtNewRate :: (IsClock (SetSampleRate c n) m, KnownNat n)
+                           => proxy1 c
+                           -> proxy2 n
+                           -> ReferenceTime c
+                           -> m (ReferenceTime (SetSampleRate c n))
+    timestampAtNewRate :: (IsClock (SetSampleRate c n) m, KnownNat n)
+                       => proxy1 c
+                       -> proxy2 n
+                       -> Timestamp c
+                       -> m (Timestamp (SetSampleRate c n))
+
+getClockRate :: forall c proxy.
+             (KnownNat (GetSampleRate c))
+             => proxy c
+             -> Integer
+getClockRate _ = natVal (Proxy :: Proxy (GetSampleRate c))
 
 data UtcClock (sampleRate :: Nat) = MkUtcClock
 
@@ -70,6 +87,14 @@ instance (KnownNat clockFreq, MonadIO m) =>
         let clockFreq = fromInteger (natVal (Proxy :: Proxy clockFreq))
         ref' <- referenceTime clk
         return (MkTicks (round (diffUTCTime ref' ref * clockFreq)))
+    referenceTimeAtNewRate _clk _newRate =
+        return
+    timestampAtNewRate clk newRate (MkTicks ticksIn) = do
+        let rateIn = getClockRate clk
+            rateOut = natVal newRate
+            ticksOut = MkTicks (fromInteger ((rateIn * toInteger ticksIn) `div`
+                                                 rateOut))
+        return ticksOut
 
 ticks :: Lens' (Timestamp (UtcClock r)) Word64
 ticks = iso _ticks MkTicks

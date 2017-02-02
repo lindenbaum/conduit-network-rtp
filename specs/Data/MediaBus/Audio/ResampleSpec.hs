@@ -5,5 +5,6 @@ import Data.MediaBus
 import Test.Hspec
 
 
-spec = Spec
+spec :: Spec
 spec = describe "Resampling of S16 samples from 8 to 16 kHz"
+    $ it "interpolates also between frames" $ pending
