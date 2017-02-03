@@ -1,5 +1,4 @@
-module Data.MediaBus.Audio.Resample (resample8to16kHz) where
-
+module Data.MediaBus.Audio.Resample ( resample8to16kHz ) where
 
 import           Data.MediaBus.Frame
 import           Data.MediaBus.Clock
@@ -14,25 +13,14 @@ import           Control.Lens
 import           Data.List                    as L
 
 resample8to16kHz :: forall s c m.
-                 (Storable s, Num s, Bits s, Monad m,
-                 GetSampleRate c ~ 8000,
-                 IsClock c m,
-                 IsClock (SetSampleRate c 16000) m,
-                 Num (Timestamp c))
+                 (Storable s, Num s, Bits s, Monad m, GetClockRate c ~ 8000, IsTiming c, IsTiming (SetClockRate c 16000), Num (Ticks (SetClockRate c 16000)))
                  => s
-                 -> FrameBufferFilter s s c (SetSampleRate c 16000) m
+                 -> FrameBufferFilter s s c (SetClockRate c 16000) m
 resample8to16kHz sInitial =
     MkFrameC (evalStateC sInitial (runFrameC (frameBufferFilterM resample)))
         `connectFrameC` adaptClock
   where
-    adaptClock = frameFilter adaptSampleRate
-      where
-        adaptSampleRate = undefined -- TODO
-        -- adaptSampleRate (MkFrame (SynchronizeTo ref (MkEvent ts p))) =
-        --     MkFrame (SynchronizeTo (referenceTimeAtNewRate ref)
-        --                            (MkEvent (timestampAtNewRate ts) p))
-        -- adaptSampleRate (MkFrame (Synchronized (MkEvent ts p))) =
-        --     MkFrame (Synchronized (MkEvent (timestampAtNewRate ts) p))
+    adaptClock = frameFilter (over frame adaptTimingSync)
 
     resample sb = do
         lastVal <- get

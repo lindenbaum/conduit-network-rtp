@@ -7,7 +7,6 @@ import           Data.Word
 import           Test.Hspec
 import           Test.QuickCheck
 import           Data.MediaBus
-import           Data.Proxy
 
 -- ----------------------------------------------------------------------
 -- * Rtp Prototype
@@ -18,7 +17,7 @@ newtype RtpSsrc = MkRtpSsrc Word32
 newtype RtpSeqNum = MkRtpSeqNum Word16
     deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq)
 
-newtype RtpTimestamp = MkRtpTimestamp Word32
+newtype RtpTicks = MkRtpTicks Word32
     deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq)
 
 data RtpPayload = MkRtpPayload { rtpPayload     :: String
@@ -30,7 +29,7 @@ newtype RtpPayloadType = MkRtpPayloadType { fromRtpPayloadType :: Word8 }
     deriving (Show, Eq, Num)
 
 data RawRtpPacket = MkRawRtpPacket { rawRtpSeqNumNumber :: RtpSeqNum
-                                   , rawRtpTimestamp    :: RtpTimestamp
+                                   , rawRtpTicks    :: RtpTicks
                                    , rawRtpSsrc         :: RtpSsrc
                                    , rawRtpPayload      :: RtpPayload
                                    }
@@ -44,10 +43,10 @@ spec = do
     reorderSpec
     synchronizeToSeqNumSpec
 
-instance HasTimestamp Word8 where
-    type GetTimestamp Word8 = Word8
-    type SetTimestamp Word8 t = t
-    timestamp = ($)
+instance HasTicks Word8 where
+    type GetTicks Word8 = Word8
+    type SetTicks Word8 t = t
+    ticks = ($)
 
 reorderSpec :: Spec
 reorderSpec = describe "reorder" $ do
@@ -95,11 +94,10 @@ synchronizeToSeqNumIsMonotone :: (NonEmptyList [Bool]) -> Word64 -> Expectation
 synchronizeToSeqNumIsMonotone (NonEmpty xs) startVal = do
     let inEvents = sourceList xs
         (first : rest) = runConduitPure (inEvents .|
-                                             synchronizeToSeqNum Proxy
-                                                                 (MkSeqNumStart startVal) .|
+                                             synchronizeToSeqNum (MkReference startVal) .|
                                              consume)
     first `shouldBe`
-        SynchronizeTo (MkSeqNumStart startVal)
+        SynchronizeTo (MkReference startVal)
                       (MkEvent (MkSeqNum startVal) (head xs))
     (rest `zip` drop 1 rest) `shouldSatisfy`
         all (not .

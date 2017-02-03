@@ -27,7 +27,6 @@ module Data.MediaBus.Frame
 import           Conduit
 import           Control.Monad
 import           Control.Lens
-import           Control.Monad.Trans.State.Strict
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Internal.Monotone
@@ -105,16 +104,16 @@ connectFrameC (MkFrameC source) (MkFrameC sink) =
 -- of audio to a single pulse coded audio sample, of course it could also be a
 -- video frame or a chat message.
 newtype Frame content (clock :: Type) =
-      MkFrame { _frame :: SynchronizedTo (ReferenceTime clock) (Timestamp clock) content
+      MkFrame { _frame :: SynchronizedTo (Reference (Ticks clock)) (Ticks clock) content
               }
 
 type FrameBuffer sample clock = Frame (SampleBuffer sample) clock
 
 makeLenses ''Frame
 
-instance IsMonotone (Timestamp clock) =>
+instance IsMonotone (Ticks clock) =>
          IsMonotone (Frame s (clock :: Type)) where
-    succeeds = succeeds `on` view (frame . timestamp')
+    succeeds = succeeds `on` view (frame . ticks')
 
 instance HasSampleBuffer content =>
          HasSampleBuffer (Frame content clock) where

@@ -1,14 +1,13 @@
 module Data.MediaBus.Sequence
-    ( SeqNumStart(..)
-    , sequenceStart
-    , SeqNumOf
-    , type SeqNum
-    , Timestamp(..)
+    ( SeqNum(..)
+    , fromSeqNum
     , reorder
     , synchronizeToSeqNum
+    , toSeqNum
     , Discontinous(..)
     ) where
 
+import           Control.Monad.State.Strict      ( gets )
 import qualified Data.Set                        as Set
 import           Test.QuickCheck                 ( Arbitrary(..) )
 import           Conduit
@@ -16,79 +15,54 @@ import           Data.MediaBus.Clock
 import           Data.MediaBus.Internal.Monotone
 import           Control.Lens
 import           Data.Function                   ( on )
-import           System.Random
-import           GHC.TypeLits
 
--- | A pseudo clock that runs sequence numbers, starting from a random start
--- value.
--- | Frame some input to a sequence number.
-data SeqNumOf s = MkSeqNumOf
+newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
+    deriving (Show, Num, Eq, Bounded, Enum, IsMonotone, Arbitrary)
 
---newtype SeqNum a = MkSeqNum { _fromSeqNum :: a }
---    deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone, Arbitrary)
-instance HasTimestamp (Timestamp (SeqNumOf a)) where
-    type GetTimestamp (Timestamp (SeqNumOf a)) = (Timestamp (SeqNumOf a))
-    type SetTimestamp (Timestamp (SeqNumOf a)) b = b
-    timestamp = iso id id
+makeLenses ''SeqNum
 
 instance (Eq a, IsMonotone a) =>
-         Ord (Timestamp (SeqNumOf a)) where
+         Ord (SeqNum a) where
     compare x y
         | x == y = EQ
         | x `succeeds` y = GT
         | otherwise = LT
 
--- | An offset, e.g. like the first rndom RTP timestamp to which the following
--- timestamps relate.
-newtype SeqNumStart s = MkSeqNumStart { _sequenceStart :: s }
-    deriving (Bounded, Integral, Num, Enum, Real, Ord, Eq, Arbitrary, Functor, IsMonotone, Random)
+deriving instance (Real a, Num a, Eq a, IsMonotone a) =>
+         Real (SeqNum a)
 
-makeLenses ''SeqNumStart
+deriving instance
+         (Integral a, Enum a, Real a, Eq a, IsMonotone a) => Integral
+         (SeqNum a)
 
-instance Show s =>
-         Show (SeqNumStart s) where
-    show (MkSeqNumStart x) =
-        "(+|" ++ show x ++ "|)"
+instance HasTicks (SeqNum s) where
+  type GetTicks (SeqNum s) = s
+  type SetTicks (SeqNum s) t = SeqNum t
+  ticks = fromSeqNum
 
-instance (IsMonotone s, Show s, Num s, Integral s, Applicative m) =>
-         IsClock (SeqNumOf s) m where
-    type ReferenceTime (SeqNumOf s) = SeqNumStart s
-    type GetSampleRate (SeqNumOf s) = 1
-    type SetSampleRate (SeqNumOf s) t = SeqNumOf s
-    newtype Timestamp (SeqNumOf s) = MkSeqNum{_fromSeqNum :: s}
-                               deriving (Show, Num, Eq, Integral, Real, Bounded, Enum, IsMonotone,
-                                         Arbitrary)
-    referenceTime _ = pure 0
-    nextTimestamp _ _ t0 = pure (t0 + 1)
-    zeroTimestamp _ = pure 0
-    referenceTimestamp _ (MkSeqNumStart ref) =
-        pure (MkSeqNum ref)
-    referenceTimeAtNewRate clk rateOutPx (MkSeqNumStart refIn) =
-        let rateIn = getClockRate clk
-            rateOut = natVal rateOutPx
-            refOut = MkSeqNumStart (fromInteger ((toInteger refIn * rateIn) `div`
-                                                     rateOut))
-        in
-            pure refOut
-    timestampAtNewRate clk rateOutPx (MkSeqNum sIn) =
-        let rateIn = getClockRate clk
-            rateOut = natVal rateOutPx
-            sOut = MkSeqNum (fromInteger ((toInteger sIn * rateIn) `div`
-                                              rateOut))
-        in
-            pure sOut
+toSeqNum :: Integral s => Reference s -> SeqNum s
+toSeqNum = fromIntegral
 
-type SeqNum a = Timestamp (SeqNumOf a)
-
-synchronizeToSeqNum :: (IsMonotone i, Monad m, Show i, Integral i)
-                    => proxy (SeqNumOf i)
-                    -> SeqNumStart i
-                    -> ConduitM a (SynchronizedTo (SeqNumStart i) (SeqNum i) a) m ()
-synchronizeToSeqNum = synchronizeToClock
+synchronizeToSeqNum :: (Monad m, Integral i)
+                    => Reference i
+                    -> ConduitM a (SynchronizedTo (Reference i) (SeqNum i) a) m ()
+synchronizeToSeqNum startSeq =
+    evalStateC (startSeq, fromIntegral startSeq) $ do
+        sendSynchronizeTo
+        awaitForever sendSynchronized
+  where
+    sendSynchronizeTo = do
+        ma <- await
+        nextSeq <- gets snd
+        maybe (return ()) (yield . SynchronizeTo startSeq . MkEvent nextSeq) ma
+        _2 %= (+ 1)
+    sendSynchronized a = do
+        nextSeq <- _2 <%= (+ 1)
+        yield (Synchronized (MkEvent nextSeq a))
 
 -- | Buffer incoming samples in a queue of the given size and output them in
 -- order. The output is monotone increasing.
-reorder :: (Eq (GetTimestamp a), IsMonotone (GetTimestamp a), HasTimestamp a, Monad m)
+reorder :: (Eq (GetTicks a), IsMonotone (GetTicks a), HasTicks a, Monad m)
         => Int
         -> Conduit a m a
 reorder windowSize = go Set.empty Nothing
@@ -97,7 +71,7 @@ reorder windowSize = go Set.empty Nothing
         mx <- await
         case mx of
             Nothing -> mapM_ (yield . keyOrderedValue) queue
-            Just x -> let xt = x ^. timestamp
+            Just x -> let xt = x ^. ticks
                       in
                           if maybe False (not . succeeds xt) minIndex
                           then go queue minIndex
