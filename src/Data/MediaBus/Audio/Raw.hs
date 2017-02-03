@@ -5,7 +5,7 @@ module Data.MediaBus.Audio.Raw
     , s16Sample
     ) where
 
-import           Data.MediaBus.Sample
+import           Foreign.Storable
 import           Data.MediaBus.Audio.Channels
 import           Data.Int
 import           Data.Bits

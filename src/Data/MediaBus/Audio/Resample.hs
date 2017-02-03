@@ -1,5 +1,6 @@
 module Data.MediaBus.Audio.Resample ( resample8to16kHz ) where
 
+import           Foreign.Storable
 import           Data.MediaBus.Frame
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Sample
@@ -11,11 +12,12 @@ import qualified Data.Vector.Storable.Mutable as M
 import           Control.Monad.State.Strict
 import           Control.Lens
 import           Data.List                    as L
+import           GHC.TypeLits
 
-resample8to16kHz :: forall s c m.
-                 (Storable s, Num s, Bits s, Monad m, GetClockRate c ~ 8000, IsTiming c, IsTiming (SetClockRate c 16000), Num (Ticks (SetClockRate c 16000)))
+resample8to16kHz :: forall s c m r r2.
+                 (Storable s, Num s, Bits s, Monad m, GetClockRate c ~ r, KnownNat r, r2 ~ (r + r), KnownNat r2, IsTiming c, IsTiming (SetClockRate c r2), Num (Ticks (SetClockRate c r2)))
                  => s
-                 -> FrameBufferFilter s s c (SetClockRate c 16000) m
+                 -> FrameBufferFilter s s c (SetClockRate c r2) m
 resample8to16kHz sInitial =
     MkFrameC (evalStateC sInitial (runFrameC (frameBufferFilterM resample)))
         `connectFrameC` adaptClock

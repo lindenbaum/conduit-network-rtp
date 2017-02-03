@@ -3,8 +3,8 @@ module Data.MediaBus.Audio.Alaw
     , alawSample
     ) where
 
+import           Foreign.Storable
 import           Data.MediaBus.Frame
-import           Data.MediaBus.Sample
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Channels
 import           Data.Bits

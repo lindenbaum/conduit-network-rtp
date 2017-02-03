@@ -69,9 +69,9 @@ instance (Integral w, KnownNat rate) =>
         rate = fromInteger $ natVal (Proxy :: Proxy rate)
 
 instance HasTicks (Ticks (Timing r w)) where
-  type GetTicks (Ticks (Timing r w)) = w
-  type SetTicks (Ticks (Timing r w)) v = (Ticks (Timing r v))
-  ticks = iso _ticks MkTicks
+    type GetTicks (Ticks (Timing r w)) = w
+    type SetTicks (Ticks (Timing r w)) v = (Ticks (Timing r v))
+    ticks = iso _ticks MkTicks
 
 getClockRate :: forall c proxy.
              (KnownNat (GetClockRate c))
@@ -91,8 +91,8 @@ convertClockRate (MkTicks ticksIn) =
     in
         ticksOut
 
-data Event t b = MkEvent { _eventTicks :: t
-                         , _eventContent   :: b
+data Event t b = MkEvent { _eventTicks   :: t
+                         , _eventContent :: b
                          }
 
 instance (IsMonotone t) =>

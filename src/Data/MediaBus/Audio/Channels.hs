@@ -6,7 +6,6 @@ module Data.MediaBus.Audio.Channels
     , HasChannelLayout(..)
     ) where
 
-import           Data.MediaBus.Sample
 import           Control.Lens
 import           Foreign.Storable
 
