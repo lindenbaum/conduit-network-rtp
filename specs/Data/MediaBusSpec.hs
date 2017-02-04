@@ -29,7 +29,7 @@ newtype RtpPayloadType = MkRtpPayloadType { fromRtpPayloadType :: Word8 }
     deriving (Show, Eq, Num)
 
 data RawRtpPacket = MkRawRtpPacket { rawRtpSeqNumNumber :: RtpSeqNum
-                                   , rawRtpTicks    :: RtpTicks
+                                   , rawRtpTicks        :: RtpTicks
                                    , rawRtpSsrc         :: RtpSsrc
                                    , rawRtpPayload      :: RtpPayload
                                    }
@@ -43,11 +43,6 @@ spec = do
     reorderSpec
     synchronizeToSeqNumSpec
 
-instance HasTicks Word8 where
-    type GetTicks Word8 = Word8
-    type SetTicks Word8 t = t
-    ticks = ($)
-
 reorderSpec :: Spec
 reorderSpec = describe "reorder" $ do
     it "the output is always monotonic increasing" $
@@ -60,7 +55,7 @@ reorderSpec = describe "reorder" $ do
                 let outFrames = runConduitPure (sourceList inFrames .|
                                                     reorder windowSize .|
                                                     consume)
-                    inFrames = [ 253, 254, 255, 0, 1 :: Word8 ]
+                    inFrames = [ 253, 254, 255, 0, 1 :: SeqNum Word8 ]
                 in
                     outFrames `shouldBe` inFrames
 
@@ -97,8 +92,7 @@ synchronizeToSeqNumIsMonotone (NonEmpty xs) startVal = do
                                              synchronizeToSeqNum (MkReference startVal) .|
                                              consume)
     first `shouldBe`
-        SynchronizeTo (MkReference startVal)
-                      (MkEvent (MkSeqNum startVal) (head xs))
+        ReSync (MkReference startVal) (MkSeqNum startVal) (head xs)
     (rest `zip` drop 1 rest) `shouldSatisfy`
         all (not .
                  uncurry succeeds)

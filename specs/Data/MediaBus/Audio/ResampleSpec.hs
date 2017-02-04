@@ -31,14 +31,15 @@ expectedResamplingResult :: [S16] -> S16 -> [S16]
 expectedResamplingResult xs lastVal =
     concatMap (\(x, y) -> [ avgSamples x y, y ]) (zip (lastVal : xs) xs)
 
-resampleAndConsume :: (Typeable s, Show w, Integral w, IsAudioSample s)
+resampleAndConsume :: forall s w.
+                   (Typeable s, Show w, Integral w, IsAudioSample s)
                    => FrameSource () (SampleBuffer s) (Timing 8000 w) Identity
                    -> s
                    -> SampleBuffer s
 resampleAndConsume vvv lastVal =
     runConduitPure (runFrameC (vvv `connectFrameC`
                                    dbgShowFrameC "before" `connectFrameC`
-                                   resample8to16kHz lastVal `connectFrameC`
+                                   (resample8to16kHz lastVal :: FrameBufferFilter s s (Timing 8000 w) (Timing 16000 w) Identity) `connectFrameC`
                                    concatFrameBuffers))
 
 singleFrameFromList :: Monad m
@@ -58,7 +59,6 @@ concatFrameBuffers :: (HasSampleBuffer a, Monad m)
 concatFrameBuffers = MkFrameC (loop mempty)
   where
     loop x = await >>= maybe (return x) (loop . mappend x . view sampleBuffer)
-
 
 instance HasDuration (SampleBuffer S16) where
     getIntegralDuration = fromIntegral . sampleCount

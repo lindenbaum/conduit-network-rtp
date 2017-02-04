@@ -115,7 +115,7 @@ connectFrameC (MkFrameC source) (MkFrameC sink) =
 -- of audio to a single pulse coded audio sample, of course it could also be a
 -- video frame or a chat message.
 newtype Frame content (clock :: Type) =
-      MkFrame { _frame :: SynchronizedTo (Reference (Ticks clock)) (Ticks clock) content
+      MkFrame { _frame :: Sync (Reference (Ticks clock)) (Ticks clock) content
               }
 
 instance (Show content, Show (Ticks clock)) =>
@@ -127,16 +127,16 @@ type FrameBuffer sample clock = Frame (SampleBuffer sample) clock
 
 makeLenses ''Frame
 
-instance IsMonotone (Ticks clock) =>
-         IsMonotone (Frame s (clock :: Type)) where
-    succeeds = succeeds `on` view (frame . ticks')
+instance IsMonotone (Ticks t) =>
+         IsMonotone (Frame s t) where
+    succeeds = succeeds `on` view (frame . syncTimestamp)
 
 instance HasSampleBuffer content =>
          HasSampleBuffer (Frame content clock) where
     type SetSampleType (Frame content clock) t = Frame (SetSampleType content t) clock
     type GetSampleType (Frame content clock) = GetSampleType content
-    sampleCount = sampleCount . view (frame . fromSynchronized . eventContent)
-    sampleBuffer = frame . fromSynchronized . eventContent . sampleBuffer
+    sampleCount = sampleCount . view (frame . syncContent)
+    sampleBuffer = frame . syncContent . sampleBuffer
 
 class Transcoder from to clock where
     transcode :: Monad m => FrameBufferFilter from to clock clock m

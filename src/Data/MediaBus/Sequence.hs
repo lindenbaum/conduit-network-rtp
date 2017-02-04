@@ -4,6 +4,7 @@ module Data.MediaBus.Sequence
     , reorder
     , synchronizeToSeqNum
     , toSeqNum
+    , HasSeqNum(..)
     , Discontinous(..)
     ) where
 
@@ -16,10 +17,28 @@ import           Data.MediaBus.Internal.Monotone
 import           Control.Lens
 import           Data.Function                   ( on )
 
+class (Eq (GetSeqNum s), Show (GetSeqNum s), IsMonotone (GetSeqNum s), Ord (GetSeqNum s), Num (GetSeqNum s), s ~ SetSeqNum s (GetSeqNum s)) =>
+      HasSeqNum s where
+    type GetSeqNum s
+    type SetSeqNum s t
+    sequenceNumber :: Lens s (SetSeqNum s t) (GetSeqNum s) t
+
+instance (Num ts, Eq ts, Show ts, IsMonotone ts, Ord ts) =>
+         HasSeqNum (Sync ref ts p) where
+    type GetSeqNum (Sync ref ts p) = ts
+    type SetSeqNum (Sync ref ts p) ts' = Sync ref ts' p
+    sequenceNumber = syncTimestamp
+
 newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
     deriving (Show, Num, Eq, Bounded, Enum, IsMonotone, Arbitrary)
 
 makeLenses ''SeqNum
+
+instance (Num ts, Eq ts, Show ts, IsMonotone ts, Ord ts) =>
+         HasSeqNum (SeqNum ts) where
+    type GetSeqNum (SeqNum s) = s
+    type SetSeqNum (SeqNum s) t = SeqNum t
+    sequenceNumber = fromSeqNum
 
 instance (Eq a, IsMonotone a) =>
          Ord (SeqNum a) where
@@ -28,50 +47,43 @@ instance (Eq a, IsMonotone a) =>
         | x `succeeds` y = GT
         | otherwise = LT
 
-deriving instance (Real a, Num a, Eq a, IsMonotone a) =>
-         Real (SeqNum a)
+deriving instance (Real a, Num a, Eq a, IsMonotone a) => Real
+         (SeqNum a)
 
 deriving instance
          (Integral a, Enum a, Real a, Eq a, IsMonotone a) => Integral
          (SeqNum a)
-
-instance HasTicks (SeqNum s) where
-  type GetTicks (SeqNum s) = s
-  type SetTicks (SeqNum s) t = SeqNum t
-  ticks = fromSeqNum
 
 toSeqNum :: Integral s => Reference s -> SeqNum s
 toSeqNum = fromIntegral
 
 synchronizeToSeqNum :: (Monad m, Integral i)
                     => Reference i
-                    -> ConduitM a (SynchronizedTo (Reference i) (SeqNum i) a) m ()
+                    -> ConduitM a (Sync (Reference i) (SeqNum i) a) m ()
 synchronizeToSeqNum startSeq =
     evalStateC (startSeq, fromIntegral startSeq) $ do
-        sendSynchronizeTo
-        awaitForever sendSynchronized
+        sendReSync
+        awaitForever sendInSync
   where
-    sendSynchronizeTo = do
+    sendReSync = do
         ma <- await
         nextSeq <- gets snd
-        maybe (return ()) (yield . SynchronizeTo startSeq . MkEvent nextSeq) ma
+        maybe (return ()) (yield . ReSync startSeq nextSeq) ma
         _2 %= (+ 1)
-    sendSynchronized a = do
+    sendInSync a = do
         nextSeq <- _2 <%= (+ 1)
-        yield (Synchronized (MkEvent nextSeq a))
+        yield (InSync nextSeq a)
 
 -- | Buffer incoming samples in a queue of the given size and output them in
 -- order. The output is monotone increasing.
-reorder :: (Eq (GetTicks a), IsMonotone (GetTicks a), HasTicks a, Monad m)
-        => Int
-        -> Conduit a m a
+reorder :: (HasSeqNum a, Monad m) => Int -> Conduit a m a
 reorder windowSize = go Set.empty Nothing
   where
     go queue minIndex = do
         mx <- await
         case mx of
             Nothing -> mapM_ (yield . keyOrderedValue) queue
-            Just x -> let xt = x ^. ticks
+            Just x -> let xt = x ^. sequenceNumber
                       in
                           if maybe False (not . succeeds xt) minIndex
                           then go queue minIndex

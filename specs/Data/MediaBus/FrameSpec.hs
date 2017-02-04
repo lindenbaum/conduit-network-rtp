@@ -1,6 +1,5 @@
 module Data.MediaBus.FrameSpec ( spec ) where
 
-import           Conduit
 import           Test.Hspec
 import           Data.MediaBus
 

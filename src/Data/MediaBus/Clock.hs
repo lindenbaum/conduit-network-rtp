@@ -8,12 +8,10 @@ module Data.MediaBus.Clock
     , getClockRate
     , IsTiming(..)
     , Timing(..)
-    , HasTicks(..)
-    , Event(..)
-    , eventTicks
-    , eventContent
-    , SynchronizedTo(..)
-    , fromSynchronized
+    , Sync(..)
+    , syncContent
+    , syncTimestamp
+    , syncReference
     , synchronizeToClock
     , convertClockRate
     , convertTicks
@@ -48,20 +46,6 @@ import           Data.Kind
 -- integral number of sub-units (e.g. audio samples).
 class HasDuration a where
     getIntegralDuration :: Integral b => a -> b
-
--- | A type class for things that have a time stamp
-class SetTicks s (GetTicks s) ~ s =>
-      HasTicks s where
-    type SetTicks s t
-    type GetTicks s
-    ticks :: Lens s (SetTicks s t) (GetTicks s) t
-    ticks' :: Lens' s (GetTicks s)
-    ticks' = ticks
-
-instance HasTicks NominalDiffTime where
-    type GetTicks NominalDiffTime = NominalDiffTime
-    type SetTicks NominalDiffTime t = t
-    ticks = iso id id
 
 class (KnownNat (GetClockRate t), SetClockRate t (GetClockRate t) ~ t) =>
       IsTiming t where
@@ -125,11 +109,6 @@ instance (Eq w, IsMonotone w) =>
          Ord (Ticks (Timing rate w)) where
     (<=) = flip succeeds
 
-instance HasTicks (Ticks (Timing r w)) where
-    type GetTicks (Ticks (Timing r w)) = w
-    type SetTicks (Ticks (Timing r w)) v = (Ticks (Timing r v))
-    ticks = iso _ticks MkTicks
-
 getClockRate :: forall c proxy.
              (KnownNat (GetClockRate c))
              => proxy c
@@ -148,78 +127,42 @@ convertClockRate (MkTicks ticksIn) =
     in
         ticksOut
 
-data Event t b = MkEvent { _eventTicks   :: t
-                         , _eventContent :: b
-                         }
-
-instance (IsMonotone t) =>
-         IsMonotone (Event t p) where
-    succeeds = succeeds `on` _eventTicks
-
-makeLenses ''Event
-
-instance HasTicks (Event t b) where
-    type SetTicks (Event t b) t' = (Event t' b)
-    type GetTicks (Event t b) = t
-    ticks = eventTicks
-
-instance (Show t, Show b) =>
-         Show (Event t b) where
-    show (MkEvent t b) = show t ++ " @@ " ++ show b
-
-instance Eq t =>
-         Eq (Event t b) where
-    (==) = (==) `on` _eventTicks
-
-instance Ord t =>
-         Ord (Event t b) where
-    compare = compare `on` _eventTicks
-
-instance Functor (Event t) where
-    fmap f (MkEvent t x) = MkEvent t (f x)
-
 -- * Media Data Synchronization
-data SynchronizedTo ref ts p =
-      SynchronizeTo { syncRef           :: ref
-                    , _fromSynchronized :: Event ts p
-                    }
-    | Synchronized { _fromSynchronized :: Event ts p }
+data Sync ref ts p = ReSync { _syncReference       :: ref
+                            , _syncTimestamp :: ts
+                            , _syncContent   :: p
+                            }
+                   | InSync { _syncTimestamp :: ts
+                            , _syncContent   :: p
+                            }
     deriving (Eq, Ord)
 
-makeLenses ''SynchronizedTo
+makeLenses ''Sync
 
 instance (Show ref, Show ts, Show p) =>
-         Show (SynchronizedTo ref ts p) where
-    show (SynchronizeTo o p) =
-        show o ++ " / " ++ show p ++ " [RESYNC]"
-    show (Synchronized p) = show p ++ " [SYNC]"
+         Show (Sync ref ts p) where
+    show (ReSync ref ts p) =
+        "RESYNC: " ++ show ref ++ " " ++ show ts ++ " @@ " ++ show p
+    show (InSync ts p) = "SYNC: " ++ show ts ++ " @@ " ++ show p
 
-instance Functor (SynchronizedTo ref ts) where
-    fmap f (SynchronizeTo o p) =
-        SynchronizeTo o (fmap f p)
-    fmap f (Synchronized p) =
-        Synchronized (fmap f p)
-
-instance HasTicks (SynchronizedTo r t p) where
-    type SetTicks (SynchronizedTo r t p) t' = SynchronizedTo r t' p
-    type GetTicks (SynchronizedTo r t p) = t
-    ticks = fromSynchronized . ticks
+instance Functor (Sync ref ts) where
+    fmap = over syncContent
 
 instance (IsMonotone t) =>
-         IsMonotone (SynchronizedTo r t p) where
-    succeeds = succeeds `on` view ticks
+         IsMonotone (Sync r t p) where
+    succeeds = succeeds `on` view syncTimestamp
 
 adaptTimingSync :: (Num (Ticks t'), IsTiming t, IsTiming t')
-                => SynchronizedTo (Reference (Ticks t)) (Ticks t) a
-                -> SynchronizedTo (Reference (Ticks t')) (Ticks t') a
-adaptTimingSync (SynchronizeTo (MkReference r) (MkEvent t a)) =
-    SynchronizeTo (MkReference (convertTicks r)) (MkEvent (convertTicks t) a)
-adaptTimingSync (Synchronized (MkEvent t a)) =
-    Synchronized (MkEvent (convertTicks t) a)
+                => Sync (Reference (Ticks t)) (Ticks t) a
+                -> Sync (Reference (Ticks t')) (Ticks t') a
+adaptTimingSync (ReSync (MkReference r) t a) =
+    ReSync (MkReference (convertTicks r)) (convertTicks t) a
+adaptTimingSync (InSync t a) =
+    InSync (convertTicks t) a
 
 deriveFrameTimestamp :: (Monad m, Integral (Ticks t), HasDuration a)
                      => Reference (Ticks t)
-                     -> Conduit a m (SynchronizedTo (Reference (Ticks t)) (Ticks t) a)
+                     -> Conduit a m (Sync (Reference (Ticks t)) (Ticks t) a)
 deriveFrameTimestamp ref@(MkReference t0) =
     evalStateC t0 go
   where
@@ -228,14 +171,14 @@ deriveFrameTimestamp ref@(MkReference t0) =
         maybe (return ())
               (\sb -> do
                    modify (+ getIntegralDuration sb)
-                   yield (SynchronizeTo ref (MkEvent t0 sb))
+                   yield (ReSync ref t0 sb)
                    awaitForever sendSyncedLoop)
               msb
       where
         sendSyncedLoop sb = do
             t <- get
             modify (+ getIntegralDuration sb)
-            yield (Synchronized (MkEvent t sb))
+            yield (InSync t sb)
 
 -- | Clocks can generate reference times, and they can convert these to tickss. Tickss are mere integrals
 class (Show (Time c), Show (TimeDiff c), IsMonotone (TimeDiff c)) =>
@@ -275,7 +218,7 @@ instance IsMonotone (TimeDiff UtcClock) where
 
 synchronizeToClock :: (IsClock c m, Monad m)
                    => Time c
-                   -> Conduit a m (SynchronizedTo (Time c) (TimeDiff c) a)
+                   -> Conduit a m (Sync (Time c) (TimeDiff c) a)
 synchronizeToClock initialTime =
     let startState = (initialTime, Nothing)
     in
@@ -286,9 +229,9 @@ synchronizeToClock initialTime =
         nextT <- lift (maybe (timeAsTimeDiff initialTime)
                              (timeSince startTime)
                              mTicks)
-        let pOut = MkEvent nextT p
-            sync = case mTicks of
-                Nothing -> SynchronizeTo startTime pOut
-                Just _ -> Synchronized pOut
+        let sync = (case mTicks of
+                        Nothing -> ReSync startTime
+                        Just _ -> InSync) nextT
+                                          p
         put (startTime, Just nextT)
         return sync
