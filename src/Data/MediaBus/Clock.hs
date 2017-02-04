@@ -1,5 +1,6 @@
 module Data.MediaBus.Clock
-    ( UtcClock(..)
+    ( HasDuration(..)
+    , UtcClock(..)
     , utcTimeDiff
     , _utcTimeDiff
     , _utcTime
@@ -17,6 +18,19 @@ module Data.MediaBus.Clock
     , convertClockRate
     , convertTicks
     , adaptTimingSync
+    , deriveFrameTimestamp
+    , type At8kHzU32
+    , at8kHzU32
+    , type At16kHzU32
+    , at16kHzU32
+    , type At48kHzU32
+    , at48kHzU32
+    , type At8kHzU64
+    , at8kHzU64
+    , type At16kHzU64
+    , at16kHzU64
+    , type At48kHzU64
+    , at48kHzU64
     ) where
 
 import           Conduit
@@ -29,6 +43,11 @@ import           Data.Function                   ( on )
 import           Data.MediaBus.Internal.Monotone
 import           Data.Word
 import           Data.Kind
+
+-- | Types with an integral duration, i.e. a duration that corresponds to an
+-- integral number of sub-units (e.g. audio samples).
+class HasDuration a where
+    getIntegralDuration :: Integral b => a -> b
 
 -- | A type class for things that have a time stamp
 class SetTicks s (GetTicks s) ~ s =>
@@ -56,17 +75,55 @@ convertTicks = (\t -> set nominalDiffTime t 0) . view nominalDiffTime
 
 data Timing (rate :: Nat) (w :: Type) = MkTiming
 
+type At8kHzU32 = Timing 8000 Word32
+
+at8kHzU32 :: At8kHzU32
+at8kHzU32 = MkTiming
+
+type At16kHzU32 = Timing 16000 Word32
+
+at16kHzU32 :: At16kHzU32
+at16kHzU32 = MkTiming
+
+type At48kHzU32 = Timing 48000 Word32
+
+at48kHzU32 :: At48kHzU32
+at48kHzU32 = MkTiming
+
+type At8kHzU64 = Timing 8000 Word64
+
+at8kHzU64 :: At8kHzU64
+at8kHzU64 = MkTiming
+
+type At16kHzU64 = Timing 16000 Word64
+
+at16kHzU64 :: At16kHzU64
+at16kHzU64 = MkTiming
+
+type At48kHzU64 = Timing 48000 Word64
+
+at48kHzU64 :: At48kHzU64
+at48kHzU64 = MkTiming
+
 instance (Integral w, KnownNat rate) =>
          IsTiming (Timing rate w) where
     type GetClockRate (Timing rate w) = rate
     type SetClockRate (Timing rate w) rate' = Timing rate' w
     newtype Ticks (Timing rate w) = MkTicks{_ticks :: w}
-                              deriving (Eq, Ord, Real, Integral, Enum, IsMonotone, Num, Show)
+                              deriving (Eq, Real, Integral, Enum, IsMonotone, Num)
     nominalDiffTime = iso (toNDT . _ticks) (MkTicks . fromNDT)
       where
         toNDT = (* rate) . fromIntegral
         fromNDT = round . (/ rate)
         rate = fromInteger $ natVal (Proxy :: Proxy rate)
+
+instance (KnownNat r, Show w) =>
+         Show (Ticks (Timing r w)) where
+    show tix@(MkTicks x) = show x ++ "@" ++ show (getClockRate tix) ++ "Hz"
+
+instance (Eq w, IsMonotone w) =>
+         Ord (Ticks (Timing rate w)) where
+    (<=) = flip succeeds
 
 instance HasTicks (Ticks (Timing r w)) where
     type GetTicks (Ticks (Timing r w)) = w
@@ -108,8 +165,7 @@ instance HasTicks (Event t b) where
 
 instance (Show t, Show b) =>
          Show (Event t b) where
-    show (MkEvent t b) = "<@ " ++
-        show t ++ " - " ++ show b ++ " @>"
+    show (MkEvent t b) = show t ++ " @@ " ++ show b
 
 instance Eq t =>
          Eq (Event t b) where
@@ -128,15 +184,15 @@ data SynchronizedTo ref ts p =
                     , _fromSynchronized :: Event ts p
                     }
     | Synchronized { _fromSynchronized :: Event ts p }
-    deriving (Eq)
+    deriving (Eq, Ord)
 
 makeLenses ''SynchronizedTo
 
 instance (Show ref, Show ts, Show p) =>
          Show (SynchronizedTo ref ts p) where
     show (SynchronizeTo o p) =
-        "/SyncTo: " ++ show o ++ "|" ++ show p ++ "/"
-    show (Synchronized p) = "/" ++ show p ++ "/"
+        show o ++ " / " ++ show p ++ " [RESYNC]"
+    show (Synchronized p) = show p ++ " [SYNC]"
 
 instance Functor (SynchronizedTo ref ts) where
     fmap f (SynchronizeTo o p) =
@@ -160,6 +216,26 @@ adaptTimingSync (SynchronizeTo (MkReference r) (MkEvent t a)) =
     SynchronizeTo (MkReference (convertTicks r)) (MkEvent (convertTicks t) a)
 adaptTimingSync (Synchronized (MkEvent t a)) =
     Synchronized (MkEvent (convertTicks t) a)
+
+deriveFrameTimestamp :: (Monad m, Integral (Ticks t), HasDuration a)
+                     => Reference (Ticks t)
+                     -> Conduit a m (SynchronizedTo (Reference (Ticks t)) (Ticks t) a)
+deriveFrameTimestamp ref@(MkReference t0) =
+    evalStateC t0 go
+  where
+    go = do
+        msb <- await
+        maybe (return ())
+              (\sb -> do
+                   modify (+ getIntegralDuration sb)
+                   yield (SynchronizeTo ref (MkEvent t0 sb))
+                   awaitForever sendSyncedLoop)
+              msb
+      where
+        sendSyncedLoop sb = do
+            t <- get
+            modify (+ getIntegralDuration sb)
+            yield (Synchronized (MkEvent t sb))
 
 -- | Clocks can generate reference times, and they can convert these to tickss. Tickss are mere integrals
 class (Show (Time c), Show (TimeDiff c), IsMonotone (TimeDiff c)) =>

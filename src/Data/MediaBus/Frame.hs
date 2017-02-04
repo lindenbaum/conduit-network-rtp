@@ -22,6 +22,7 @@ module Data.MediaBus.Frame
     , runFrameC
     , connectFrameC
     , Transcoder(..)
+    , dbgShowFrameC
     ) where
 
 import           Foreign.Storable
@@ -33,8 +34,8 @@ import           Data.MediaBus.Clock
 import           Data.MediaBus.Internal.Monotone
 import           Data.Function                   ( on )
 import           Data.Kind
-import           Data.Void
 import           Control.Monad.Writer.Strict     ( tell )
+import           Debug.Trace
 
 newtype FrameC i o m r = MkFrameC { runFrameC :: ConduitM i o m r }
 
@@ -88,7 +89,7 @@ sampleFilterM :: (Storable sample, Storable sample', Monad m)
               -> FrameBufferFilter sample sample' clock clock m
 sampleFilterM f = frameBufferFilterM $ mapMOf (sampleVector . each) f
 
-type FrameSink sample clock r m = FrameC (Frame sample clock) Void m r
+type FrameSink sample clock r m = forall o. FrameC (Frame sample clock) o m r
 
 foldFrames :: (Monoid o, Monad m)
            => (Frame sample clock -> o)
@@ -117,6 +118,11 @@ newtype Frame content (clock :: Type) =
       MkFrame { _frame :: SynchronizedTo (Reference (Ticks clock)) (Ticks clock) content
               }
 
+instance (Show content, Show (Ticks clock)) =>
+         Show (Frame content clock) where
+    show (MkFrame synContent) =
+        "«" ++ show synContent ++ "»"
+
 type FrameBuffer sample clock = Frame (SampleBuffer sample) clock
 
 makeLenses ''Frame
@@ -134,3 +140,6 @@ instance HasSampleBuffer content =>
 
 class Transcoder from to clock where
     transcode :: Monad m => FrameBufferFilter from to clock clock m
+
+dbgShowFrameC :: (Show (Frame s c), Monad m) => String -> FrameFilter s s c c m
+dbgShowFrameC msg = frameFilter (trace msg . traceShowId)
