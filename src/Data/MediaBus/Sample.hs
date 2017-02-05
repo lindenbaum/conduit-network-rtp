@@ -18,6 +18,7 @@ import           Data.Vector.Storable.Mutable as M ( MVector(..) )
 import           Control.Monad.ST             ( ST, runST )
 import           GHC.Exts                     ( IsList(..) )
 import           Data.Typeable
+import           Data.MediaBus.Clock
 
 -- | A sample is a discrete value of a continuous signal, periodically sampled
 -- at the sampling frequency. This is a full buffer of those things.
@@ -39,6 +40,12 @@ instance (SV.Storable sampleType, Typeable sampleType, Show sampleType) =>
                             if l > 10 then "" else " " ++ show samples
 
 makeLenses ''SampleBuffer
+
+instance (HasDuration (Proxy sampleType), SV.Storable sampleType) =>
+         HasDuration (SampleBuffer sampleType) where
+    getDuration sb = let sampleDur = getDuration (Proxy :: Proxy sampleType)
+                     in
+                         sampleDur * fromIntegral (sampleCount sb)
 
 instance SV.Storable s =>
          IsList (SampleBuffer s) where

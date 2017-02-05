@@ -8,6 +8,3 @@ extra-deps: []
 flags: {}
 
 extra-package-dbs: []
-
-build:
-  test: true

@@ -8,14 +8,14 @@ module Data.MediaBus.Clock
     , getClockRate
     , IsTiming(..)
     , Timing(..)
+    , mkTicks
     , Sync(..)
     , syncContent
     , syncTimestamp
     , syncReference
     , synchronizeToClock
-    , convertClockRate
     , convertTicks
-    , adaptTimingSync
+    , convertSync
     , deriveFrameTimestamp
     , type At8kHzU32
     , at8kHzU32
@@ -45,7 +45,7 @@ import           Data.Kind
 -- | Types with an integral duration, i.e. a duration that corresponds to an
 -- integral number of sub-units (e.g. audio samples).
 class HasDuration a where
-    getIntegralDuration :: Integral b => a -> b
+    getDuration :: Integral b => a -> b
 
 class (KnownNat (GetClockRate t), SetClockRate t (GetClockRate t) ~ t) =>
       IsTiming t where
@@ -54,8 +54,11 @@ class (KnownNat (GetClockRate t), SetClockRate t (GetClockRate t) ~ t) =>
     data Ticks t
     nominalDiffTime :: Iso' (Ticks t) NominalDiffTime
 
-convertTicks :: (Num (Ticks t'), IsTiming t, IsTiming t') => Ticks t -> Ticks t'
-convertTicks = (\t -> set nominalDiffTime t 0) . view nominalDiffTime
+mkTicks :: Timing r w -> w -> Ticks (Timing r w)
+mkTicks _ tix = MkTicks tix
+
+convertTicks :: (IsTiming t, IsTiming t') => Ticks t -> Ticks t'
+convertTicks = view (from nominalDiffTime) . view nominalDiffTime
 
 data Timing (rate :: Nat) (w :: Type) = MkTiming
 
@@ -97,13 +100,15 @@ instance (Integral w, KnownNat rate) =>
                               deriving (Eq, Real, Integral, Enum, IsMonotone, Num)
     nominalDiffTime = iso (toNDT . _ticks) (MkTicks . fromNDT)
       where
-        toNDT = (* rate) . fromIntegral
-        fromNDT = round . (/ rate)
+        toNDT = (/ rate) . fromIntegral
+        fromNDT = round . (* rate)
         rate = fromInteger $ natVal (Proxy :: Proxy rate)
 
-instance (KnownNat r, Show w) =>
+instance (KnownNat r, Integral w, Show w) =>
          Show (Ticks (Timing r w)) where
-    show tix@(MkTicks x) = show x ++ "@" ++ show (getClockRate tix) ++ "Hz"
+    show tix@(MkTicks x) = show (view nominalDiffTime tix) ++
+        " " ++
+            show x ++ "@" ++ show (getClockRate tix) ++ "Hz"
 
 instance (Eq w, IsMonotone w) =>
          Ord (Ticks (Timing rate w)) where
@@ -115,20 +120,8 @@ getClockRate :: forall c proxy.
              -> Integer
 getClockRate _ = natVal (Proxy :: Proxy (GetClockRate c))
 
-convertClockRate :: forall rIn rOut wIn wOut.
-                 (IsTiming (Timing rIn wIn), IsTiming (Timing rOut wOut), Num wOut, Integral wIn)
-                 => Ticks (Timing rIn wIn)
-                 -> Ticks (Timing rOut wOut)
-convertClockRate (MkTicks ticksIn) =
-    let rateIn = natVal (Proxy :: Proxy rIn)
-        rateOut = natVal (Proxy :: Proxy rOut)
-        ticksOut = MkTicks (fromInteger ((rateIn * toInteger ticksIn) `div`
-                                             rateOut))
-    in
-        ticksOut
-
 -- * Media Data Synchronization
-data Sync ref ts p = ReSync { _syncReference       :: ref
+data Sync ref ts p = ReSync { _syncReference :: ref
                             , _syncTimestamp :: ts
                             , _syncContent   :: p
                             }
@@ -152,12 +145,12 @@ instance (IsMonotone t) =>
          IsMonotone (Sync r t p) where
     succeeds = succeeds `on` view syncTimestamp
 
-adaptTimingSync :: (Num (Ticks t'), IsTiming t, IsTiming t')
+convertSync :: (IsTiming t, IsTiming t')
                 => Sync (Reference (Ticks t)) (Ticks t) a
                 -> Sync (Reference (Ticks t')) (Ticks t') a
-adaptTimingSync (ReSync (MkReference r) t a) =
+convertSync (ReSync (MkReference r) t a) =
     ReSync (MkReference (convertTicks r)) (convertTicks t) a
-adaptTimingSync (InSync t a) =
+convertSync (InSync t a) =
     InSync (convertTicks t) a
 
 deriveFrameTimestamp :: (Monad m, Integral (Ticks t), HasDuration a)
@@ -170,14 +163,14 @@ deriveFrameTimestamp ref@(MkReference t0) =
         msb <- await
         maybe (return ())
               (\sb -> do
-                   modify (+ getIntegralDuration sb)
+                   modify (+ getDuration sb)
                    yield (ReSync ref t0 sb)
                    awaitForever sendSyncedLoop)
               msb
       where
         sendSyncedLoop sb = do
             t <- get
-            modify (+ getIntegralDuration sb)
+            modify (+ getDuration sb)
             yield (InSync t sb)
 
 -- | Clocks can generate reference times, and they can convert these to tickss. Tickss are mere integrals

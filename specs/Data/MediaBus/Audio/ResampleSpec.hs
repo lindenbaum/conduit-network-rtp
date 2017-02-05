@@ -6,8 +6,6 @@ import           Test.QuickCheck
 import           Test.Hspec
 import           Data.Word
 import           Control.Monad.State.Strict
-import           Control.Lens
-import           Data.Typeable
 
 spec :: Spec
 spec = describe "Resampling of S16 samples from 8 to 16 kHz" $ do
@@ -32,13 +30,12 @@ expectedResamplingResult xs lastVal =
     concatMap (\(x, y) -> [ avgSamples x y, y ]) (zip (lastVal : xs) xs)
 
 resampleAndConsume :: forall s w.
-                   (Typeable s, Show w, Integral w, IsAudioSample s)
+                   (Integral w, IsAudioSample s)
                    => FrameSource () (SampleBuffer s) (Timing 8000 w) Identity
                    -> s
                    -> SampleBuffer s
 resampleAndConsume vvv lastVal =
     runConduitPure (runFrameC (vvv `connectFrameC`
-                                   dbgShowFrameC "before" `connectFrameC`
                                    (resample8to16kHz lastVal :: FrameBufferFilter s s (Timing 8000 w) (Timing 16000 w) Identity) `connectFrameC`
                                    concatFrameBuffers))
 
@@ -53,12 +50,3 @@ framesFromLists :: Monad m
                 -> FrameSource () (SampleBuffer S16) (Timing 8000 Word32) m
 framesFromLists xs = MkFrameC (mapM_ (yield . sampleBufferFromList) xs .|
                                    mapOutput MkFrame (deriveFrameTimestamp 0))
-
-concatFrameBuffers :: (HasSampleBuffer a, Monad m)
-                   => FrameSink a t (GetSampleBuffer a) m
-concatFrameBuffers = MkFrameC (loop mempty)
-  where
-    loop x = await >>= maybe (return x) (loop . mappend x . view sampleBuffer)
-
-instance HasDuration (SampleBuffer S16) where
-    getIntegralDuration = fromIntegral . sampleCount

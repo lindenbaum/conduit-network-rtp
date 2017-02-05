@@ -11,6 +11,7 @@ module Data.MediaBus.Frame
     , type FrameFilter
     , frameFilter
     , frameFilterM
+    , frameFilterStateT
     , type FrameBufferFilter
     , frameBufferFilter
     , frameBufferFilterM
@@ -19,10 +20,11 @@ module Data.MediaBus.Frame
     , type FrameSink
     , foldFrames
     , foldFramesM
+    , concatFrameBuffers
+    , dbgShowFrameC
     , runFrameC
     , connectFrameC
     , Transcoder(..)
-    , dbgShowFrameC
     ) where
 
 import           Foreign.Storable
@@ -35,7 +37,9 @@ import           Data.MediaBus.Internal.Monotone
 import           Data.Function                   ( on )
 import           Data.Kind
 import           Control.Monad.Writer.Strict     ( tell )
+import qualified Control.Monad.State.Strict      as State
 import           Debug.Trace
+import           System.Random
 
 newtype FrameC i o m r = MkFrameC { runFrameC :: ConduitM i o m r }
 
@@ -62,6 +66,14 @@ frameFilterM :: Monad m
              => (Frame sample clock -> m (Frame sample' clock'))
              -> FrameFilter sample sample' clock clock' m
 frameFilterM = frameSourceM
+
+frameFilterStateT :: (Monad m)
+                  => st
+                  -> (Frame sample clock
+                      -> State.StateT st m (Frame sample' clock'))
+                  -> FrameFilter sample sample' clock clock' m
+frameFilterStateT initialSt =
+    MkFrameC . evalStateC initialSt . runFrameC . frameFilterM
 
 type FrameBufferFilter sample sample' clock clock' m = FrameC (FrameBuffer sample clock) (FrameBuffer sample' clock') m ()
 
@@ -103,6 +115,33 @@ foldFramesM :: (Monoid o, Monad m)
             -> FrameSink sample clock o m
 foldFramesM f = MkFrameC (execWriterC (awaitForever (lift . lift . f >=> tell)))
 
+concatFrameBuffers :: (HasSampleBuffer a, Monad m)
+                   => FrameSink a t (GetSampleBuffer a) m
+concatFrameBuffers = MkFrameC (loop mempty)
+  where
+    loop x = await >>= maybe (return x) (loop . mappend x . view sampleBuffer)
+
+dbgShowFrameC :: (Show (Frame s c), Monad m)
+              => Double
+              -> String
+              -> FrameFilter s s c c m
+dbgShowFrameC probability msg =
+    frameFilterStateT (mkStdGen 100, (0 :: Integer))
+                      (\x -> do
+                           (g, omitted) <- State.get
+                           let (p, g') = randomR (0, 1) g
+                           if (p < probability)
+                               then do
+                                   let prefix = if omitted == 0
+                                                then ""
+                                                else ("(" ++
+                                                          show omitted ++
+                                                              " messages omitted) ")
+                                   traceM (prefix ++ msg ++ ": " ++ show x)
+                                   State.put (g', 0)
+                               else State.put (g', omitted + 1)
+                           return x)
+
 connectFrameC :: Monad m
               => FrameC i b m ()
               -> FrameC b o m r2
@@ -115,8 +154,7 @@ connectFrameC (MkFrameC source) (MkFrameC sink) =
 -- of audio to a single pulse coded audio sample, of course it could also be a
 -- video frame or a chat message.
 newtype Frame content (clock :: Type) =
-      MkFrame { _frame :: Sync (Reference (Ticks clock)) (Ticks clock) content
-              }
+      MkFrame { _frame :: Sync (Reference (Ticks clock)) (Ticks clock) content }
 
 instance (Show content, Show (Ticks clock)) =>
          Show (Frame content clock) where
@@ -140,6 +178,3 @@ instance HasSampleBuffer content =>
 
 class Transcoder from to clock where
     transcode :: Monad m => FrameBufferFilter from to clock clock m
-
-dbgShowFrameC :: (Show (Frame s c), Monad m) => String -> FrameFilter s s c c m
-dbgShowFrameC msg = frameFilter (trace msg . traceShowId)

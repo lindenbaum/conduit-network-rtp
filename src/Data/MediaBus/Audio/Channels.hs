@@ -8,6 +8,8 @@ module Data.MediaBus.Audio.Channels
 
 import           Control.Lens
 import           Foreign.Storable
+import           Data.MediaBus.Clock
+import           Data.Proxy
 
 data ChannelLayout = SingleChannel | ChannelPair
     deriving (Show, Eq, Ord, Enum)
@@ -30,6 +32,10 @@ instance HasChannelLayout a =>
                 ChannelPair
             other -> error ("Sorry this channel layout is not supported: " ++
                                 show other)
+
+instance (HasDuration (Proxy a)) =>
+         HasDuration (Proxy (ChannelPair a)) where
+    getDuration _ = getDuration (Proxy :: Proxy a)
 
 instance Storable s =>
          Storable (ChannelPair s) where

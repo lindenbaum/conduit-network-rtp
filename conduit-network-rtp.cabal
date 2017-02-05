@@ -114,9 +114,10 @@ test-suite tests
   other-modules:       Data.MediaBus.Audio.ResampleSpec
                      , Data.MediaBus.Internal.BiIndexSpec
                      , Data.MediaBus.Internal.RingBufferSpec
+                     , Data.MediaBus.ClockSpec
                      , Data.MediaBus.FrameSpec
                      , Data.MediaBus.SampleSpec
-                     , Data.MediaBusSpec
+                     , Data.MediaBus.SequenceSpec
   default-language:    Haskell2010
   build-depends:       QuickCheck
                      , array

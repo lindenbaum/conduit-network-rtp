@@ -12,21 +12,21 @@ import           Control.Monad.State.Strict
 import           Control.Lens
 
 resample8to16kHz :: forall s m w w'.
-                 (IsAudioSample s, Monad m, Num w', IsTiming (Timing 8000 w), IsTiming (Timing 16000 w'))
+                 (IsAudioSample s, Monad m, IsTiming (Timing 8000 w), IsTiming (Timing 16000 w'))
                  => s
                  -> FrameBufferFilter s s (Timing 8000 w) (Timing 16000 w') m
 resample8to16kHz sInitial =
     MkFrameC (evalStateC sInitial (runFrameC (frameBufferFilterM resample)))
         `connectFrameC` adaptClock
   where
-    adaptClock = frameFilter (over frame adaptTimingSync)
+    adaptClock = frameFilter (over frame convertSync)
 
     resample sb
-      | sampleCount sb == 0 = return sb
-      |otherwise = do
-        lastVal <- get
-        put (V.last (sb ^. sampleVector))
-        return (createSampleBufferFrom (interpolate lastVal) sb)
+        | sampleCount sb == 0 = return sb
+        | otherwise = do
+              lastVal <- get
+              put (V.last (sb ^. sampleVector))
+              return (createSampleBufferFrom (interpolate lastVal) sb)
       where
         interpolate !lastVal !vIn = do
             let lenOut = 2 * V.length vIn

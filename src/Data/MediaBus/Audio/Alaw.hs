@@ -7,15 +7,20 @@ import           Foreign.Storable
 import           Data.MediaBus.Frame
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Channels
+import           Data.MediaBus.Clock
 import           Data.Bits
 import           Data.Word
 import           Data.Int
 import           Control.Lens
+import           Data.Proxy
 
 newtype ALaw = MkALaw { _alawSample :: Word8 }
     deriving (Show, Storable, Num, Eq, Bits)
 
 makeLenses ''ALaw
+
+instance HasDuration (Proxy ALaw) where
+    getDuration _ = 1
 
 instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel

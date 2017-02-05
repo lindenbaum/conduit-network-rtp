@@ -1,4 +1,4 @@
-module Data.MediaBusSpec ( spec ) where
+module Data.MediaBus.SequenceSpec ( spec ) where
 
 import           Conduit           as C
 import           Data.Conduit.List ( consume, sourceList )
@@ -7,33 +7,6 @@ import           Data.Word
 import           Test.Hspec
 import           Test.QuickCheck
 import           Data.MediaBus
-
--- ----------------------------------------------------------------------
--- * Rtp Prototype
--- ----------------------------------------------------------------------
-newtype RtpSsrc = MkRtpSsrc Word32
-    deriving (Show, Eq)
-
-newtype RtpSeqNum = MkRtpSeqNum Word16
-    deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq)
-
-newtype RtpTicks = MkRtpTicks Word32
-    deriving (Show, Bounded, Integral, Num, Enum, Real, Ord, Eq)
-
-data RtpPayload = MkRtpPayload { rtpPayload     :: String
-                               , rtpPayloadType :: RtpPayloadType
-                               }
-    deriving Show
-
-newtype RtpPayloadType = MkRtpPayloadType { fromRtpPayloadType :: Word8 }
-    deriving (Show, Eq, Num)
-
-data RawRtpPacket = MkRawRtpPacket { rawRtpSeqNumNumber :: RtpSeqNum
-                                   , rawRtpTicks        :: RtpTicks
-                                   , rawRtpSsrc         :: RtpSsrc
-                                   , rawRtpPayload      :: RtpPayload
-                                   }
-    deriving Show
 
 -- -----------------------------------------------------------------------------
 -- * Tests/Specs

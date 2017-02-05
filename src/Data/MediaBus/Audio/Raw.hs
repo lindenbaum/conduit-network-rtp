@@ -13,9 +13,13 @@ import           Control.Lens
 import           Test.QuickCheck
 import           Data.Bits
 import           Data.Typeable
+import           Data.MediaBus.Clock
 
 newtype S16 = MkS16 { _s16Sample :: Int16 }
     deriving (Typeable, Storable, Num, Eq, Ord, Arbitrary)
+
+instance HasDuration (Proxy S16) where
+    getDuration _ = 1
 
 instance Show S16 where
     show (MkS16 x) = show x

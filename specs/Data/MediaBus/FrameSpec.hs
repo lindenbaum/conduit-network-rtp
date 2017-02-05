@@ -1,7 +1,6 @@
 module Data.MediaBus.FrameSpec ( spec ) where
 
 import           Test.Hspec
-import           Data.MediaBus
 
 spec :: Spec
 spec = describe "Frames with an example FormatProxy as format" $
