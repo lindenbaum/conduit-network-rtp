@@ -126,17 +126,17 @@ dbgShowFrameC :: (Show (Frame s c), Monad m)
               -> String
               -> FrameFilter s s c c m
 dbgShowFrameC probability msg =
-    frameFilterStateT (mkStdGen 100, (0 :: Integer))
+    frameFilterStateT (mkStdGen 100, 0 :: Integer)
                       (\x -> do
                            (g, omitted) <- State.get
                            let (p, g') = randomR (0, 1) g
-                           if (p < probability)
+                           if p < probability
                                then do
                                    let prefix = if omitted == 0
                                                 then ""
-                                                else ("(" ++
-                                                          show omitted ++
-                                                              " messages omitted) ")
+                                                else "(" ++
+                                                    show omitted ++
+                                                        " messages omitted) "
                                    traceM (prefix ++ msg ++ ": " ++ show x)
                                    State.put (g', 0)
                                else State.put (g', omitted + 1)
