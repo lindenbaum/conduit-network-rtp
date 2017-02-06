@@ -11,16 +11,11 @@ import qualified Data.Vector.Storable.Mutable as M
 import           Control.Monad.State.Strict
 import           Control.Lens
 
-resample8to16kHz :: forall s m w w'.
-                 (IsAudioSample s, Monad m, IsTiming (Timing 8000 w), IsTiming (Timing 16000 w'))
-                 => s
-                 -> FrameBufferFilter s s (Timing 8000 w) (Timing 16000 w') m
-resample8to16kHz sInitial =
-    MkFrameC (evalStateC sInitial (runFrameC (frameBufferFilterM resample)))
-        `connectFrameC` adaptClock
+resample8to16kHz :: (IsAudioSample sa, Monad m, IsTiming (Timing 8000 w), IsTiming (Timing 16000 w'))
+                 => sa
+                 -> ConduitM (Frame i s (Ticks (Timing 8000 w)) (SampleBuffer sa)) (Frame i s (Ticks (Timing 16000 w')) (SampleBuffer sa)) m ()
+resample8to16kHz sa = evalStateC sa (frameResamplerM convertTicks resample)
   where
-    adaptClock = frameFilter (over frame convertSync)
-
     resample sb
         | sampleCount sb == 0 = return sb
         | otherwise = do

@@ -10,12 +10,12 @@ module Data.MediaBus.Clock
     , Timing(..)
     , mkTicks
     , Sync(..)
-    , syncContent
+    , _MkSync
+    , overSyncC
+    , syncValue
     , syncTimestamp
-    , syncReference
     , synchronizeToClock
     , convertTicks
-    , convertSync
     , deriveFrameTimestamp
     , type At8kHzU32
     , at8kHzU32
@@ -55,7 +55,7 @@ class (KnownNat (GetClockRate t), SetClockRate t (GetClockRate t) ~ t) =>
     nominalDiffTime :: Iso' (Ticks t) NominalDiffTime
 
 mkTicks :: Timing r w -> w -> Ticks (Timing r w)
-mkTicks _ tix = MkTicks tix
+mkTicks _ = MkTicks
 
 convertTicks :: (IsTiming t, IsTiming t') => Ticks t -> Ticks t'
 convertTicks = view (from nominalDiffTime) . view nominalDiffTime
@@ -121,57 +121,43 @@ getClockRate :: forall c proxy.
 getClockRate _ = natVal (Proxy :: Proxy (GetClockRate c))
 
 -- * Media Data Synchronization
-data Sync ref ts p = ReSync { _syncReference :: ref
-                            , _syncTimestamp :: ts
-                            , _syncContent   :: p
-                            }
-                   | InSync { _syncTimestamp :: ts
-                            , _syncContent   :: p
-                            }
+data Sync ts p = MkSync { _syncTimestamp :: ts
+                        , _syncValue   :: p
+                        }
     deriving (Eq, Ord)
 
 makeLenses ''Sync
 
-instance (Show ref, Show ts, Show p) =>
-         Show (Sync ref ts p) where
-    show (ReSync ref ts p) =
-        "RESYNC: " ++ show ref ++ " " ++ show ts ++ " @@ " ++ show p
-    show (InSync ts p) = "SYNC: " ++ show ts ++ " @@ " ++ show p
+makePrisms ''Sync
 
-instance Functor (Sync ref ts) where
-    fmap = over syncContent
+overSyncC :: Monad m
+          => (ts -> ConduitM c c' m ())
+          -> ConduitM (Sync ts c) (Sync ts c') m ()
+overSyncC f = awaitForever $
+    \sn -> yield (_syncValue sn) .|
+        mapOutput (MkSync (_syncTimestamp sn)) (f (_syncTimestamp sn))
+
+instance (Show ts, Show p) =>
+         Show (Sync ts p) where
+    show (MkSync ts p) = "SYNC: " ++ show ts ++ " @@ " ++ show p
+
+instance Functor (Sync ts) where
+    fmap = over syncValue
 
 instance (IsMonotone t) =>
-         IsMonotone (Sync r t p) where
+         IsMonotone (Sync t p) where
     succeeds = succeeds `on` view syncTimestamp
 
-convertSync :: (IsTiming t, IsTiming t')
-                => Sync (Reference (Ticks t)) (Ticks t) a
-                -> Sync (Reference (Ticks t')) (Ticks t') a
-convertSync (ReSync (MkReference r) t a) =
-    ReSync (MkReference (convertTicks r)) (convertTicks t) a
-convertSync (InSync t a) =
-    InSync (convertTicks t) a
-
 deriveFrameTimestamp :: (Monad m, Integral (Ticks t), HasDuration a)
-                     => Reference (Ticks t)
-                     -> Conduit a m (Sync (Reference (Ticks t)) (Ticks t) a)
-deriveFrameTimestamp ref@(MkReference t0) =
-    evalStateC t0 go
+                     => Ticks t
+                     -> Conduit a m (Sync (Ticks t) a)
+deriveFrameTimestamp t0 =
+    evalStateC t0 (awaitForever sendSync)
   where
-    go = do
-        msb <- await
-        maybe (return ())
-              (\sb -> do
-                   modify (+ getDuration sb)
-                   yield (ReSync ref t0 sb)
-                   awaitForever sendSyncedLoop)
-              msb
-      where
-        sendSyncedLoop sb = do
-            t <- get
-            modify (+ getDuration sb)
-            yield (InSync t sb)
+    sendSync sb = do
+        t <- get
+        modify (+ getDuration sb)
+        yield (MkSync t sb)
 
 -- | Clocks can generate reference times, and they can convert these to tickss. Tickss are mere integrals
 class (Show (Time c), Show (TimeDiff c), IsMonotone (TimeDiff c)) =>
@@ -211,7 +197,7 @@ instance IsMonotone (TimeDiff UtcClock) where
 
 synchronizeToClock :: (IsClock c m, Monad m)
                    => Time c
-                   -> Conduit a m (Sync (Time c) (TimeDiff c) a)
+                   -> Conduit a m (TimeDiff c, a)
 synchronizeToClock initialTime =
     let startState = (initialTime, Nothing)
     in
@@ -222,9 +208,5 @@ synchronizeToClock initialTime =
         nextT <- lift (maybe (timeAsTimeDiff initialTime)
                              (timeSince startTime)
                              mTicks)
-        let sync = (case mTicks of
-                        Nothing -> ReSync startTime
-                        Just _ -> InSync) nextT
-                                          p
         put (startTime, Just nextT)
-        return sync
+        return (nextT, p)

@@ -58,14 +58,14 @@ synchronizeToSeqNumSpec =
         it "produces dense, strictly monotonic output" $
             property synchronizeToSeqNumIsMonotone
 
-synchronizeToSeqNumIsMonotone :: (NonEmptyList [Bool]) -> Word64 -> Expectation
+synchronizeToSeqNumIsMonotone :: NonEmptyList [Bool] -> Word64 -> Expectation
 synchronizeToSeqNumIsMonotone (NonEmpty xs) startVal = do
     let inEvents = sourceList xs
-        (first : rest) = runConduitPure (inEvents .|
-                                             synchronizeToSeqNum (MkReference startVal) .|
+        (e0 : rest) = runConduitPure (inEvents .|
+                                             synchronizeToSeqNum (MkSeqNum startVal) .|
                                              consume)
-    first `shouldBe`
-        ReSync (MkReference startVal) (MkSeqNum startVal) (head xs)
+    e0 `shouldBe` (MkSequenceNumbered (MkSeqNum startVal) (head xs))
+
     (rest `zip` drop 1 rest) `shouldSatisfy`
         all (not .
                  uncurry succeeds)

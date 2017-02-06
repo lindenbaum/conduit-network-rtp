@@ -1,13 +1,9 @@
 module Data.MediaBus.Internal.Monotone
-    ( Reference(..)
-    , fromReference
-    , IsMonotone(..)
+    ( IsMonotone(..)
     ) where
 
 import           Data.Word
 import           Data.Int
-import           Test.QuickCheck
-import           Control.Lens
 
 -- | Class of numbers that are monotone increasing (or decreasing) and have a
 -- relative order, that is not necessarily transitive.
@@ -38,14 +34,3 @@ instance IsMonotone Int32
 instance IsMonotone Int64
 
 instance IsMonotone Int
-
--- | An offset, e.g. like the first rndom RTP timestamp to which the following
--- timestamps relate.
-newtype Reference s = MkReference { _fromReference :: s }
-    deriving (Bounded, Integral, Num, Enum, Real, Ord, Eq, Arbitrary, Functor, IsMonotone)
-
-makeLenses ''Reference
-
-instance Show s =>
-         Show (Reference s) where
-    show (MkReference x) = "#" ++ show x

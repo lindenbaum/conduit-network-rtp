@@ -1,180 +1,216 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Data.MediaBus.Frame
     ( Frame(..)
-    , type FrameBuffer
     , frame
-    , FrameC(..)
-    , type FrameSource
-    , frameSource
-    , frameSourceM
-    , type FrameFilter
-    , frameFilter
-    , frameFilterM
-    , frameFilterStateT
-    , type FrameBufferFilter
-    , frameBufferFilter
-    , frameBufferFilterM
-    , sampleFilter
-    , sampleFilterM
+    , type SourceId'
+    , type SeqNum'
+    , type Ticks'
+    , type Timing'
+    , type Frame'
+    , type FrameBuffer
+    , type FrameBuffer'
+    , FrameCtx(..)
+    , frameCtxSourceId
+    , frameCtxSeqNumRef
+    , frameCtxTimestampRef
+    , type FrameCtx'
+    , FrameValue(..)
+    , type FrameValue'
+    , frameSeqNum
+    , frameTimestamp
+    , frameValue
+    , type FrameC
+    , type FrameC'
+    , type FrameContentC
+    , type FrameContentC'
+    , Transcoder(..)
+    , overFrameContentC
+    , frameResamplerM
     , type FrameSink
+    , type FrameSink'
     , foldFrames
     , foldFramesM
-    , concatFrameBuffers
+    , concatFrameContents
     , dbgShowFrameC
-    , runFrameC
-    , connectFrameC
-    , Transcoder(..)
     ) where
 
-import           Foreign.Storable
 import           Conduit
 import           Control.Monad
 import           Control.Lens
 import           Data.MediaBus.Sample
+import           Data.MediaBus.Basics
+import           Data.MediaBus.Sequence
 import           Data.MediaBus.Clock
-import           Data.MediaBus.Internal.Monotone
-import           Data.Function                   ( on )
-import           Data.Kind
+import           Data.MediaBus.Internal.Relative
 import           Control.Monad.Writer.Strict     ( tell )
-import qualified Control.Monad.State.Strict      as State
+import           Control.Monad.State.Strict      as State
 import           Debug.Trace
 import           System.Random
-
-newtype FrameC i o m r = MkFrameC { runFrameC :: ConduitM i o m r }
-
-type FrameSource i sample clock m = FrameC i (Frame sample clock) m ()
-
-frameSource :: Monad m
-            => (i -> Frame sample clock)
-            -> FrameSource i sample clock m
-frameSource f = MkFrameC (awaitForever (yield . f))
-
-frameSourceM :: Monad m
-             => (i -> m (Frame sample clock))
-             -> FrameSource i sample clock m
-frameSourceM f = MkFrameC (awaitForever (lift . f >=> yield))
-
-type FrameFilter sample sample' clock clock' m = FrameC (Frame sample clock) (Frame sample' clock') m ()
-
-frameFilter :: Monad m
-            => (Frame sample clock -> Frame sample' clock')
-            -> FrameFilter sample sample' clock clock' m
-frameFilter = frameSource
-
-frameFilterM :: Monad m
-             => (Frame sample clock -> m (Frame sample' clock'))
-             -> FrameFilter sample sample' clock clock' m
-frameFilterM = frameSourceM
-
-frameFilterStateT :: (Monad m)
-                  => st
-                  -> (Frame sample clock
-                      -> State.StateT st m (Frame sample' clock'))
-                  -> FrameFilter sample sample' clock clock' m
-frameFilterStateT initialSt =
-    MkFrameC . evalStateC initialSt . runFrameC . frameFilterM
-
-type FrameBufferFilter sample sample' clock clock' m = FrameC (FrameBuffer sample clock) (FrameBuffer sample' clock') m ()
-
-frameBufferFilter :: (Storable sample, Storable sample', Monad m)
-                  => (SampleBuffer sample -> SampleBuffer sample')
-                  -> FrameBufferFilter sample sample' clock clock m
-frameBufferFilter f = frameFilter (over sampleBuffer f)
-
-frameBufferFilterM :: (Storable sample, Storable sample', Monad m)
-                   => (SampleBuffer sample -> m (SampleBuffer sample'))
-                   -> FrameBufferFilter sample sample' clock clock m
-frameBufferFilterM f = frameFilterM $
-    \frm -> do
-        let buffer = frm ^. sampleBuffer
-        buffer' <- f buffer
-        return (frm & sampleBuffer .~ buffer')
-
-sampleFilter :: (Storable sample, Storable sample', Monad m)
-             => (sample -> sample')
-             -> FrameBufferFilter sample sample' clock clock m
-sampleFilter f = frameBufferFilter (over (sampleVector . each) f)
-
-sampleFilterM :: (Storable sample, Storable sample', Monad m)
-              => (sample -> m sample')
-              -> FrameBufferFilter sample sample' clock clock m
-sampleFilterM f = frameBufferFilterM $ mapMOf (sampleVector . each) f
-
-type FrameSink sample clock r m = forall o. FrameC (Frame sample clock) o m r
-
-foldFrames :: (Monoid o, Monad m)
-           => (Frame sample clock -> o)
-           -> FrameSink sample clock o m
-foldFrames f = MkFrameC $
-    execWriterC $
-        awaitForever $ tell . f
-
-foldFramesM :: (Monoid o, Monad m)
-            => (Frame sample clock -> m o)
-            -> FrameSink sample clock o m
-foldFramesM f = MkFrameC (execWriterC (awaitForever (lift . lift . f >=> tell)))
-
-concatFrameBuffers :: (HasSampleBuffer a, Monad m)
-                   => FrameSink a t (GetSampleBuffer a) m
-concatFrameBuffers = MkFrameC (loop mempty)
-  where
-    loop x = await >>= maybe (return x) (loop . mappend x . view sampleBuffer)
-
-dbgShowFrameC :: (Show (Frame s c), Monad m)
-              => Double
-              -> String
-              -> FrameFilter s s c c m
-dbgShowFrameC probability msg =
-    frameFilterStateT (mkStdGen 100, 0 :: Integer)
-                      (\x -> do
-                           (g, omitted) <- State.get
-                           let (p, g') = randomR (0, 1) g
-                           if p < probability
-                               then do
-                                   let prefix = if omitted == 0
-                                                then ""
-                                                else "(" ++
-                                                    show omitted ++
-                                                        " messages omitted) "
-                                   traceM (prefix ++ msg ++ ": " ++ show x)
-                                   State.put (g', 0)
-                               else State.put (g', omitted + 1)
-                           return x)
-
-connectFrameC :: Monad m
-              => FrameC i b m ()
-              -> FrameC b o m r2
-              -> FrameC i o m r2
-connectFrameC (MkFrameC source) (MkFrameC sink) =
-    MkFrameC (source .| sink)
+import           Data.Maybe
+import           Data.Word
 
 -- | A 'Frame' can be anything that has a start time and is exactly one time
 -- unit long, it can respresent anything ranging from an audio buffer with 20ms
 -- of audio to a single pulse coded audio sample, of course it could also be a
 -- video frame or a chat message.
-newtype Frame content (clock :: Type) =
-      MkFrame { _frame :: Sync (Reference (Ticks clock)) (Ticks clock) content }
+newtype Frame i s t c = MkFrame { _frame :: Relative i (Series s (SequenceNumbered s (Series t (Sync t c))))
+                                }
+    deriving (Functor)
 
-instance (Show content, Show (Ticks clock)) =>
-         Show (Frame content clock) where
-    show (MkFrame synContent) =
-        "«" ++ show synContent ++ "»"
+type SourceId' = SourceId Word32
 
-type FrameBuffer sample clock = Frame (SampleBuffer sample) clock
+type SeqNum' = SeqNum Word16
+
+type Timing' r = Timing r Word32
+
+type Ticks' r = Ticks (Timing' r)
+
+type Frame' r c = Frame SourceId' SeqNum' (Ticks' r) c
+
+instance (Show i, Show s, Show t, Show c) =>
+         Show (Frame i s t c) where
+    show (MkFrame x) = "«" ++ show x ++ "»"
+
+type FrameBuffer i s t c = Frame i s t (SampleBuffer c)
+
+type FrameBuffer' r c = FrameBuffer SourceId' SeqNum' (Ticks' r) (SampleBuffer c)
 
 makeLenses ''Frame
 
-instance IsMonotone (Ticks t) =>
-         IsMonotone (Frame s t) where
-    succeeds = succeeds `on` view (frame . syncTimestamp)
+data FrameCtx i s t = MkFrameCtx { _frameCtxSourceId     :: i
+                                 , _frameCtxSeqNumRef    :: s
+                                 , _frameCtxTimestampRef :: t
+                                 }
+    deriving Eq
 
-instance HasSampleBuffer content =>
-         HasSampleBuffer (Frame content clock) where
-    type SetSampleType (Frame content clock) t = Frame (SetSampleType content t) clock
-    type GetSampleType (Frame content clock) = GetSampleType content
-    sampleCount = sampleCount . view (frame . syncContent)
-    sampleBuffer = frame . syncContent . sampleBuffer
+type FrameCtx' r = FrameCtx SourceId' SeqNum' (Ticks' r)
 
-class Transcoder from to clock where
-    transcode :: Monad m => FrameBufferFilter from to clock clock m
+instance (Show i, Show s, Show t) =>
+         Show (FrameCtx i s t) where
+    show (MkFrameCtx sid snr tsr) =
+        "{{ source: " ++
+            show sid ++
+                ", sn-ref: " ++
+                    show snr ++
+                        ", ts-ref: " ++
+                            show tsr ++
+                                " }}"
+
+makeLenses ''FrameCtx
+
+data FrameValue s t c = MkFrameValue { _frameSeqNum    :: s
+                                     , _frameTimestamp :: t
+                                     , _frameValue     :: c
+                                     }
+    deriving Eq
+
+type FrameValue' r v = FrameValue SeqNum' (Ticks' r) v
+
+instance (Show s, Show t, Show v) =>
+         Show (FrameValue s t v) where
+    show (MkFrameValue sn ts v) =
+        "FRAME sn: " ++
+            show sn ++
+                ", ts: " ++
+                    show ts ++
+                        ", v: " ++
+                            show v
+
+makeLenses ''FrameValue
+
+type FrameC i s t c c' m r = ConduitM (Frame i s t c) (Frame i s t c') m r
+
+type FrameC' t c c' m r = FrameC SourceId' SeqNum' (Ticks' t) c c' m r
+
+type FrameContentC i s t c c' m r = FrameCtx i s t
+    -> ConduitM (FrameValue s t c) c' m r
+
+type FrameContentC' t c c' m r = FrameContentC SourceId' SeqNum' (Ticks' t) c c' m r
+
+class Transcoder from to i s t m where
+    transcode :: FrameContentC i s t from to m ()
+
+overFrameContentC :: Monad m
+                  => i
+                  -> FrameContentC i s t c c' m ()
+                  -> FrameC i s t c c' m ()
+overFrameContentC i0 f =
+    mapInput _frame (Just . MkFrame) (mapOutput MkFrame process)
+  where
+    process = overRelativeFirstC (const i0)
+        $ \i -> overSeriesC _seqNum
+            $ \(MkStartingFrom snr) ->
+                overSequenceNumberedC $
+                    \sn -> overSeriesC _syncTimestamp
+                        $ \(MkStartingFrom tsr) ->
+                            let fc = MkFrameCtx i snr tsr
+                            in
+                                overSyncC $
+                                    \ts -> mapInput (MkFrameValue sn ts)
+                                                    (const Nothing)
+                                                    (f fc)
+
+frameResamplerM :: forall i s t t' c c' m.
+                Monad m
+                => (t -> t')
+                -> (c -> m c')
+                -> ConduitM (Frame i s t c) (Frame i s t' c') m ()
+frameResamplerM fTicks fContent =
+    awaitForever (doContent . doTicks >=> yield)
+  where
+    doContent = lift .
+        mapMOf (frame .
+                    _MkRelative .
+                        _Next . seqNumValue . _Next . syncValue)
+               fContent
+    doTicks = over (frame . _MkRelative . _Next . seqNumValue)
+                   (over _Start fTicks
+                        . over (_Next . syncTimestamp) fTicks)
+
+type FrameSink i s t c m r = Sink (Frame i s t c) m r
+
+type FrameSink' t c m r = FrameSink SourceId' SeqNum' (Ticks' t) c m r
+
+foldFrames :: (Monoid o, Monad m)
+           => (Frame i s t c -> o)
+           -> FrameSink i s t c m o
+foldFrames f = execWriterC $
+    awaitForever $
+        tell .
+            f
+
+foldFramesM :: (Monoid o, Monad m)
+            => (Frame i s t c -> m o)
+            -> FrameSink i s t c m o
+foldFramesM f = execWriterC $
+    awaitForever (lift . lift . f >=> tell)
+
+concatFrameContents :: (Monoid c, Monad m) => FrameSink i s t c m c
+concatFrameContents = foldFrames (fromMaybe mempty .
+                                      (^? frame .
+                                              _MkRelative .
+                                                  _Next .
+                                                      seqNumValue .
+                                                          _Next .
+                                                              syncValue))
+
+dbgShowFrameC :: (Show (Frame i s t c), Monad m)
+              => Double
+              -> String
+              -> FrameC i s t c c m ()
+dbgShowFrameC probability msg =
+    evalStateC (mkStdGen 100, 0 :: Integer) $
+        awaitForever $
+            \x -> do
+                (g, omitted) <- State.get
+                let (p, g') = randomR (0, 1) g
+                if p < probability
+                    then do
+                        let prefix = if omitted == 0
+                                     then ""
+                                     else "(" ++
+                                         show omitted ++
+                                             " messages omitted) "
+                        traceM (prefix ++ msg ++ ": " ++ show x)
+                        State.put (g', 0)
+                    else State.put (g', omitted + 1)
+                yield x

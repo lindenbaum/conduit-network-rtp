@@ -29,24 +29,26 @@ expectedResamplingResult :: [S16] -> S16 -> [S16]
 expectedResamplingResult xs lastVal =
     concatMap (\(x, y) -> [ avgSamples x y, y ]) (zip (lastVal : xs) xs)
 
-resampleAndConsume :: forall s w.
-                   (Integral w, IsAudioSample s)
-                   => FrameSource () (SampleBuffer s) (Timing 8000 w) Identity
-                   -> s
-                   -> SampleBuffer s
+resampleAndConsume :: forall s w i a.
+                   (Integral w, IsAudioSample a)
+                   => Source Identity (FrameBuffer i s (Ticks (Timing 8000 w)) a)
+                   -> a
+                   -> SampleBuffer a
 resampleAndConsume vvv lastVal =
-    runConduitPure (runFrameC (vvv `connectFrameC`
-                                   (resample8to16kHz lastVal :: FrameBufferFilter s s (Timing 8000 w) (Timing 16000 w) Identity) `connectFrameC`
-                                   concatFrameBuffers))
+    runConduitPure (vvv .|
+                        (resample8to16kHz lastVal :: ConduitM (Frame i s (Ticks (Timing 8000 w)) (SampleBuffer a)) (Frame i s (Ticks (Timing 16000 Word64)) (SampleBuffer a)) Identity ()) .|
+                        concatFrameContents)
 
 singleFrameFromList :: Monad m
                     => [S16]
-                    -> FrameSource () (SampleBuffer S16) (Timing 8000 Word32) m
-singleFrameFromList x = MkFrameC (yield (sampleBufferFromList x) .|
-                                      mapOutput MkFrame (deriveFrameTimestamp 0))
+                    -> Source m (FrameBuffer i Int (Ticks (Timing 8000 Word32)) S16)
+singleFrameFromList x = yield (sampleBufferFromList x) .|
+    mapOutput (MkFrame . MkRelative . Next . MkSequenceNumbered 0 . Next)
+              (deriveFrameTimestamp 0)
 
 framesFromLists :: Monad m
                 => [[S16]]
-                -> FrameSource () (SampleBuffer S16) (Timing 8000 Word32) m
-framesFromLists xs = MkFrameC (mapM_ (yield . sampleBufferFromList) xs .|
-                                   mapOutput MkFrame (deriveFrameTimestamp 0))
+                -> Source m (FrameBuffer i Int (Ticks (Timing 8000 Word32)) S16)
+framesFromLists xs = mapM_ (yield . sampleBufferFromList) xs .|
+    mapOutput (MkFrame . MkRelative . Next . MkSequenceNumbered 0 . Next)
+              (deriveFrameTimestamp 0)

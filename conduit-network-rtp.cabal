@@ -36,6 +36,7 @@ library
                      , Data.MediaBus.Frame
                      , Data.MediaBus.Internal.BiIndex
                      , Data.MediaBus.Internal.Monotone
+                     , Data.MediaBus.Internal.Relative
                      , Data.MediaBus.Internal.RingBuffer
                      , Data.MediaBus.Sample
                      , Data.MediaBus.Sequence

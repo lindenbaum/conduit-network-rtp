@@ -13,6 +13,7 @@ import           Data.Word
 import           Data.Int
 import           Control.Lens
 import           Data.Proxy
+import           Conduit
 
 newtype ALaw = MkALaw { _alawSample :: Word8 }
     deriving (Show, Storable, Num, Eq, Bits)
@@ -25,11 +26,13 @@ instance HasDuration (Proxy ALaw) where
 instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel
 
-instance Transcoder ALaw S16 clock where
-    transcode = sampleFilter (MkS16 . decodeAlawFrame . _alawSample)
+instance Monad m =>
+         Transcoder ALaw S16 i s t m where
+    transcode _ = mapC (MkS16 . decodeAlawFrame . _alawSample . _frameValue)
 
-instance Transcoder S16 ALaw clock where
-    transcode = sampleFilter (MkALaw . encodeAlawFrame . _s16Sample)
+instance Monad m =>
+         Transcoder S16 ALaw i s t m where
+    transcode _ = mapC (MkALaw . encodeAlawFrame . _s16Sample . _frameValue)
 
 decodeAlawFrame :: Word8 -> Int16
 decodeAlawFrame !a' = let !a = a' `xor` 85
@@ -77,30 +80,23 @@ encodeAlawFrame !pcmVal' =
                                    , (-1) * pcmVal - 1
                                    )
         -- !segments = [0x1F,0x3F,0x7F,0xFF,0x1FF,0x3FF,0x7FF,0xFFF] :: [
-        !segment = if pcmValAbs <= 0x1F
-                   then 0
-                   else if pcmValAbs <= 0x3F
-                        then 1
-                        else if pcmValAbs <= 0x7F
-                             then 2
-                             else if pcmValAbs <= 0xFF
-                                  then 3
-                                  else if pcmValAbs <= 0x1FF
-                                       then 4
-                                       else if pcmValAbs <= 0x3FF
-                                            then 5
-                                            else if pcmValAbs <= 0x7FF
-                                                 then 6
-                                                 else if pcmValAbs <= 0xFFF
-                                                      then 7
-                                                      else 8
+        !segment
+            | pcmValAbs <= 31 = 0
+            | pcmValAbs <= 63 = 1
+            | pcmValAbs <= 127 = 2
+            | pcmValAbs <= 255 = 3
+            | pcmValAbs <= 511 = 4
+            | pcmValAbs <= 1023 = 5
+            | pcmValAbs <= 2047 = 6
+            | pcmValAbs <= 4095 = 7
+            | otherwise = 8
         !res = if segment == 8
                then 0x7F
                else let !segShift = if segment < 2
                                     then 1
                                     else fromIntegral segment
                     in
-                        (shiftL segment 4) .|.
+                        shiftL segment 4 .|.
                             (shiftR pcmValAbs segShift .&. 0xF)
     in
         fromIntegral res `xor` mask
