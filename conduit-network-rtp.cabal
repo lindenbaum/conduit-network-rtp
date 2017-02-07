@@ -34,12 +34,15 @@ library
                      , Data.MediaBus.Basics
                      , Data.MediaBus.Clock
                      , Data.MediaBus.Frame
+                     , Data.MediaBus.Internal.AsyncConduit
                      , Data.MediaBus.Internal.BiIndex
                      , Data.MediaBus.Internal.Monotone
                      , Data.MediaBus.Internal.Relative
                      , Data.MediaBus.Internal.RingBuffer
                      , Data.MediaBus.Sample
                      , Data.MediaBus.Sequence
+                     , Data.MediaBus.Transport.Udp
+                     , Data.MediaBus.Rtp.Packet
                      , Data.MediaBus.Rtp
   default-language:    Haskell2010
   ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds

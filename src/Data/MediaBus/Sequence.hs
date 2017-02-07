@@ -51,7 +51,7 @@ deriving instance
          (SeqNum a)
 
 data SequenceNumbered i a =
-      MkSequenceNumbered { _seqNum        :: i
+      MkSequenceNumbered { _seqNum      :: i
                          , _seqNumValue :: a
                          }
     deriving (Show, Eq)
@@ -59,7 +59,7 @@ data SequenceNumbered i a =
 makeLenses ''SequenceNumbered
 
 instance Functor (SequenceNumbered i) where
-  fmap = over seqNumValue
+    fmap = over seqNumValue
 
 instance IsMonotone a =>
          IsMonotone (SequenceNumbered a p) where

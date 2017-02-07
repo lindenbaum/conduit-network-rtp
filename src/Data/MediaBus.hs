@@ -11,3 +11,6 @@ import           Data.MediaBus.Internal.Monotone as X
 import           Data.MediaBus.Internal.Relative as X
 import           Data.MediaBus.Sample            as X
 import           Data.MediaBus.Sequence          as X
+import           Data.MediaBus.Transport.Udp     as X
+import           Data.MediaBus.Rtp.Packet        as X
+import           Data.MediaBus.Rtp               as X
