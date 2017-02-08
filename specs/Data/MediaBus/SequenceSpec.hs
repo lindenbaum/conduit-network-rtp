@@ -7,6 +7,7 @@ import           Data.Word
 import           Test.Hspec
 import           Test.QuickCheck
 import           Data.MediaBus
+import           Data.MediaBus.Internal.Monotone
 
 -- -----------------------------------------------------------------------------
 -- * Tests/Specs
@@ -58,13 +59,13 @@ synchronizeToSeqNumSpec =
         it "produces dense, strictly monotonic output" $
             property synchronizeToSeqNumIsMonotone
 
-synchronizeToSeqNumIsMonotone :: NonEmptyList [Bool] -> Word64 -> Expectation
+synchronizeToSeqNumIsMonotone :: NonEmptyList (SeqNum ()) -> Word64 -> Expectation
 synchronizeToSeqNumIsMonotone (NonEmpty xs) startVal = do
-    let inEvents = sourceList xs
+    let inEvents = sourceList xs :: Producer Identity (SeqNum ())
         (e0 : rest) = runConduitPure (inEvents .|
-                                             synchronizeToSeqNum (MkSeqNum startVal) .|
+                                             synchronizeToSeqNum startVal .|
                                              consume)
-    e0 `shouldBe` (MkSequenceNumbered (MkSeqNum startVal) (head xs))
+    e0 `shouldBe` (MkSeqNum startVal)
 
     (rest `zip` drop 1 rest) `shouldSatisfy`
         all (not .

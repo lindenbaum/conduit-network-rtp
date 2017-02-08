@@ -2,8 +2,8 @@ Serialize and deserialize RTP packets.
 TODO: Add RTCP support
 
 > module Data.MediaBus.Rtp.Packet
->   ( Packet(..), Header(..), HeaderExtension(..)
->   , SeqNum(..)
+>   ( RtpPacket(..), RtpHeader(..), HeaderExtension(..)
+>   , RtpSeqNum(..)
 >   , deserialize, serialize)
 > where
 
@@ -23,22 +23,22 @@ The relevant output will be contained in the 'Packet' and 'Header' data types.
 The Functor style of 'Packet' allows to keep the RTP header info around, while
 converting and analysing the packet.
 
-> data Packet =
->   Packet { header :: !Header
->          , body   :: !B.ByteString }
+> data RtpPacket =
+>   MkRtpPacket { header :: !RtpHeader
+>               , body   :: !B.ByteString }
 >   deriving (Eq)
 
 
-> data Header =
->   Header { version         :: !Word8
->          , hasPadding      :: !Bool
->          , hasMarker       :: !Bool
->          , payloadType     :: !Word8
->          , sequenceNumber  :: !SeqNum
->          , timestamp       :: !Word32
->          , ssrc            :: !Word32
->          , csrcs           :: ![Word32]
->          , headerExtension :: !(Maybe HeaderExtension)}
+> data RtpHeader =
+>   MkRtpHeader { version         :: !Word8
+>               , hasPadding      :: !Bool
+>               , hasMarker       :: !Bool
+>               , payloadType     :: !Word8
+>               , sequenceNumber  :: !RtpSeqNum
+>               , timestamp       :: !Word32
+>               , ssrc            :: !Word32
+>               , csrcs           :: ![Word32]
+>               , headerExtension :: !(Maybe HeaderExtension)}
 >   deriving (Eq)
 
 SeqNum numbers are special because they wrap-around.
@@ -49,19 +49,19 @@ packet has @x2 = 0@ then in this context @x2 > x1@.
 
 This newtype wrapper allows to add a corresponding 'Ord' instance.
 
-> newtype SeqNum = MkSeqNum {unSeqNum :: Word16}
+> newtype RtpSeqNum = MkRtpSeqNum {unSeqNum :: Word16}
 >   deriving (Num, Show)
 
 The 'Eq' instance is straight forward:
 
-> instance Eq SeqNum where
->   (MkSeqNum !seqL) == (MkSeqNum !seqR) = seqL == seqR
+> instance Eq RtpSeqNum where
+>   (MkRtpSeqNum !seqL) == (MkRtpSeqNum !seqR) = seqL == seqR
 
 
 This 'Ord' instance will regard @0 <= 1@ and @65535 <= 0@.
 
-> instance Ord SeqNum where
->   (MkSeqNum !seqL) <= (MkSeqNum !seqR) =
+> instance Ord RtpSeqNum where
+>   (MkRtpSeqNum !seqL) <= (MkRtpSeqNum !seqR) =
 >     seqL <= seqR && seqR - seqL < 32768
 
 
@@ -69,21 +69,21 @@ The 'HeaderExtension' is a profile specific, variable length, data block
 following the fixed size RTP header:
 
 > data HeaderExtension =
->   HeaderExtension { headerExtensionField :: !Word16
->                   , headerExtensionBody  :: ![Word32] }
+>   MkHeaderExtension { headerExtensionField :: !Word16
+>                     , headerExtensionBody  :: ![Word32] }
 >   deriving (Read,Eq,Show)
 
 
 Deserialize a complete RTP datagram:
 
-> deserialize :: B.ByteString -> Packet
+> deserialize :: B.ByteString -> RtpPacket
 > deserialize bs = either error id (runGet getPacket bs)
 
 Below are only internal functions.
 
 This function will parse an 'Rtp' packet from a 'ByteString':
 
-> getPacket :: Get Packet
+> getPacket :: Get RtpPacket
 > getPacket = do
 
 First read the header:
@@ -103,7 +103,7 @@ And then adjust for padding:
 
 Wrap everything up and return it:
 
->   return (Packet h body)
+>   return (MkRtpPacket h body)
 
 Ok now to adjust for padding:
 
@@ -115,7 +115,7 @@ Ok now to adjust for padding:
 
 This function will parse an 'RtpHeader':
 
-> getHeader :: Get Header
+> getHeader :: Get RtpHeader
 > getHeader = do
 
 The values are in network byte order, i.e. big-endian.
@@ -326,12 +326,12 @@ If a the extension flag is set, we must parse an optional header extension:
 >                    then Just <$> getHeaderExtension
 >                    else return Nothing
 
->   return (Header
+>   return (MkRtpHeader
 >             { version = version'
 >             , hasPadding = hasPadding'
 >             , hasMarker = hasMarker'
 >             , payloadType = payloadType'
->             , sequenceNumber = MkSeqNum sequenceNumber'
+>             , sequenceNumber = MkRtpSeqNum sequenceNumber'
 >             , timestamp = timestamp'
 >             , ssrc = ssrc'
 >             , csrcs = csrcs'
@@ -362,7 +362,7 @@ Quoting the RFC again:
 >   field  <- getWord16be
 >   len    <- getWord16be
 >   body   <- sequence (replicate (fromIntegral len) getWord32be)
->   return (HeaderExtension field body)
+>   return (MkHeaderExtension field body)
 
 NOTE: To test this, you can use gstreamer, e.g. with this command line:
 
@@ -372,8 +372,8 @@ gst-launch-1.0 autoaudiosrc is-live=true ! audioconvert ! audioresample ! alawen
 
 Here are the type class instances:
 
-> instance Show Packet where
->   show (Packet hdr bd) =
+> instance Show RtpPacket where
+>   show (MkRtpPacket hdr bd) =
 >        printf "RTP %s << " (show hdr)
 >     ++ (if B.length bd > 10
 >         then unwords (printf "%0.4x" <$> B.unpack (B.take 10 bd)) ++ " ..."
@@ -382,17 +382,18 @@ Here are the type class instances:
 
 A monoid instance can be nice:
 
-> instance Monoid Packet where
->   mempty = Packet mempty mempty
->   mappend (Packet h1 b1) (Packet h2 b2) = Packet (h1 <> h2) (b1 <> b2)
+> instance Monoid RtpPacket where
+>   mempty = MkRtpPacket mempty mempty
+>   mappend (MkRtpPacket h1 b1) (MkRtpPacket h2 b2) =
+>     MkRtpPacket (h1 <> h2) (b1 <> b2)
 
 Of course, the interesting things happening in 'Header's instance:
 
-> instance Monoid Header where
->   mempty = Header 2 False False 0 0 0 0 [] Nothing
->   mappend (Header v1 p1 m1 pt1 seq1 ts1 ssrc1 csrcs1 hes1)
->           (Header v2 p2 m2 pt2 seq2 ts2 ssrc2 csrcs2 hes2) =
->     Header
+> instance Monoid RtpHeader where
+>   mempty = MkRtpHeader 2 False False 0 0 0 0 [] Nothing
+>   mappend (MkRtpHeader v1 p1 m1 pt1 seq1 ts1 ssrc1 csrcs1 hes1)
+>           (MkRtpHeader v2 p2 m2 pt2 seq2 ts2 ssrc2 csrcs2 hes2) =
+>     MkRtpHeader
 >          (max v1 v2)
 >          (p1 || p2)
 >          (m1 || m2)
@@ -429,8 +430,8 @@ Of course, the interesting things happening in 'Header's instance:
 >          (csrcs1 <> csrcs2)
 >          (hes1 <|> hes2)
 
-> instance Show Header where
->   show (Header _ _ m pt s ts ssrc _csrcs hes) =
+> instance Show RtpHeader where
+>   show (MkRtpHeader _ _ m pt s ts ssrc _csrcs hes) =
 >     printf "ssrc:%09d/pt:%d/ts:%09d/seq:%05d/m:%d/e:%s"
 >           ssrc
 >           pt
@@ -441,11 +442,11 @@ Of course, the interesting things happening in 'Header's instance:
 
 Serialization is straight forward the opposite of deserialization.
 
-> serialize :: Packet -> B.ByteString
+> serialize :: RtpPacket -> B.ByteString
 > serialize pkg = runPut (putPacket pkg)
 
-> putPacket :: Packet -> Put
-> putPacket (Packet h b) = do
+> putPacket :: RtpPacket -> Put
+> putPacket (MkRtpPacket h b) = do
 
 First write the header then the body.
 
@@ -471,8 +472,8 @@ number of bytes in that list.
 
 Writing out the header:
 
-> putHeader :: Header -> Put
-> putHeader Header{..} = do
+> putHeader :: RtpHeader -> Put
+> putHeader MkRtpHeader{..} = do
 
 To repeat the RTP header structure:
 
@@ -535,7 +536,7 @@ And last but not least the header extensions:
 Serialize the 'HeaderExtension':
 
 > putHeaderExtension :: HeaderExtension -> Put
-> putHeaderExtension HeaderExtension{..} = do
+> putHeaderExtension MkHeaderExtension{..} = do
 >   putWord16be headerExtensionField
 
 Write the number of 'Word32's that make up the header extension body. Limit the

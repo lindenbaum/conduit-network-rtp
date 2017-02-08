@@ -1,11 +1,12 @@
 module Data.MediaBus.Audio.ResampleSpec ( spec ) where
 
 import           Data.MediaBus
+import           Data.MediaBus.Internal.Series
 import           Conduit
 import           Test.QuickCheck
 import           Test.Hspec
-import           Data.Word
 import           Control.Monad.State.Strict
+import           Data.Default
 
 spec :: Spec
 spec = describe "Resampling of S16 samples from 8 to 16 kHz" $ do
@@ -29,26 +30,28 @@ expectedResamplingResult :: [S16] -> S16 -> [S16]
 expectedResamplingResult xs lastVal =
     concatMap (\(x, y) -> [ avgSamples x y, y ]) (zip (lastVal : xs) xs)
 
-resampleAndConsume :: forall s w i a.
-                   (Integral w, IsAudioSample a)
-                   => Source Identity (FrameBuffer i s (Ticks (Timing 8000 w)) a)
+resampleAndConsume :: IsAudioSample a
+                   => Source Identity (Stream' 8000 (SampleBuffer a))
                    -> a
                    -> SampleBuffer a
 resampleAndConsume vvv lastVal =
     runConduitPure (vvv .|
-                        (resample8to16kHz lastVal :: ConduitM (Frame i s (Ticks (Timing 8000 w)) (SampleBuffer a)) (Frame i s (Ticks (Timing 16000 Word64)) (SampleBuffer a)) Identity ()) .|
-                        concatFrameContents)
+                        resample8to16kHz' lastVal .|
+                        concatStreamContents)
 
 singleFrameFromList :: Monad m
                     => [S16]
-                    -> Source m (FrameBuffer i Int (Ticks (Timing 8000 Word32)) S16)
-singleFrameFromList x = yield (sampleBufferFromList x) .|
-    mapOutput (MkFrame . MkRelative . Next . MkSequenceNumbered 0 . Next)
-              (deriveFrameTimestamp 0)
+                    -> Source m (Stream' 8000 (SampleBuffer S16))
+singleFrameFromList x = mapOutput (MkStream . Next)
+                                  (mapOutput (MkFrame () def)
+                                             (yield (sampleBufferFromList x)) .|
+                                       deriveFrameTimestamp 0)
 
 framesFromLists :: Monad m
                 => [[S16]]
-                -> Source m (FrameBuffer i Int (Ticks (Timing 8000 Word32)) S16)
-framesFromLists xs = mapM_ (yield . sampleBufferFromList) xs .|
-    mapOutput (MkFrame . MkRelative . Next . MkSequenceNumbered 0 . Next)
-              (deriveFrameTimestamp 0)
+                -> Source m (Stream' 8000 (SampleBuffer S16))
+framesFromLists xs = mapOutput (MkStream . Next)
+                               (mapOutput (MkFrame () def)
+                                          (mapM_ (yield . sampleBufferFromList)
+                                                 xs) .|
+                                    deriveFrameTimestamp 0)

@@ -1,55 +1,26 @@
-{-# LANGUAGE UndecidableInstances #-}
-
-module Data.MediaBus.Basics
+module Data.MediaBus.SourceId
     ( SourceId(..)
     , sourceId
     ) where
 
 import           Control.Lens
+import           Test.QuickCheck
+import           Data.Default
 
 --
 -- | Things that can be uniquely identified by a looking at a (much simpler)
 -- representation, the 'identity'.
-data SourceId i = MkSourceId { _sourceId :: i }
+newtype SourceId i = MkSourceId { _sourceId :: i }
+    deriving (Eq, Arbitrary, Default, Ord, Num)
 
 makeLenses ''SourceId
 
-instance Show i => Show (SourceId i) where
-  show (MkSourceId x) = "ID: " ++ show x
-
-{-
+instance Show i =>
+         Show (SourceId i) where
+    show (MkSourceId x) = "SOURCE-ID: " ++ show x{-
 TODOs
 
 0. Basics on the API
-  -- newtype Frame i s t c = MkFrame { _frame :: IdentifiedBy i (SequenceNumbered s (Sync t c)) }
-  --
-  -- data FrameCtx i s t = MkFrameCtx { frameSourceId :: i, frameSeqNum :: s, frameSeqNumRef :: s, fromeTimestamp :: t, frameTimestampRef :: t}
-  --
-  -- type FrameContentC i s t c c' m r = ConduitM c c' (ReaderT (FramceCtx i s t) m) r
-  --
-  -- type FrameC i s t c c' m r = ConduitM (Frame i s t c) (Frame i s t c') m r
-  --
-  -- overFrameContentC :: Monad m => FrameContentC i s t c c' m r -> FrameC i s t c c' m r
-  --
-  ---
-  --
-  -- Stream a b c =   MkStreamStrart a | MkStream b
-  --                          | MkStreamEnd c
-  --
-  -- data StreamCtx a = StreamIdle | StreamStarted { streamStartArg :: a }
-  --
-  -- type StreamContentC a b b' m o = ConduitM b b' (ReaderT (StreamCtx a) m) o
-  --
-  -- type StreamC a b b' m o = ConduitM (Stream a b o) (Stream a b' o) m o
-  --
-  -- overStreamContentC :: Monad m => StreamContentC a b b' m o -> StreamC a b b' m o
-  --
-  ---
-  --
-  -- type FrameStreamC a i s t c c' m o = StreamC a (Frame i s t c) (Frame i s t c') m o
-  --
-  -- overFrameStreamContent :: Monad m => FrameContentC i s t c c' m r -> FrameStreamC a i s t c c' m
-  --
   -- wenn bei einigen events z.B. SetNewId eine neue Id gesetzt wird sollen interessierte stellen sich das
   -- halt merken und ansonsten den Id aspekt ignorieren, wie z.b. auch beim Sync aspekt, schlimmstenfalls macht man ein MonadReader oder so...
   --

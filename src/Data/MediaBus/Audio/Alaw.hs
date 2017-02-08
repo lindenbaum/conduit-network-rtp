@@ -4,7 +4,7 @@ module Data.MediaBus.Audio.Alaw
     ) where
 
 import           Foreign.Storable
-import           Data.MediaBus.Frame
+import           Data.MediaBus.Stream
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Channels
 import           Data.MediaBus.Clock
@@ -26,13 +26,11 @@ instance HasDuration (Proxy ALaw) where
 instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel
 
-instance Monad m =>
-         Transcoder ALaw S16 i s t m where
-    transcode _ = mapC (MkS16 . decodeAlawFrame . _alawSample . _frameValue)
+instance Transcoder ALaw S16 s t where
+    transcode = mapC (over frameValue (MkS16 . decodeAlawFrame . _alawSample))
 
-instance Monad m =>
-         Transcoder S16 ALaw i s t m where
-    transcode _ = mapC (MkALaw . encodeAlawFrame . _s16Sample . _frameValue)
+instance Transcoder S16 ALaw s t where
+    transcode = mapC (over frameValue (MkALaw . encodeAlawFrame . _s16Sample))
 
 decodeAlawFrame :: Word8 -> Int16
 decodeAlawFrame !a' = let !a = a' `xor` 85
