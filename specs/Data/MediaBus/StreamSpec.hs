@@ -5,7 +5,6 @@ import           Test.QuickCheck
 import           Conduit
 import           Data.Conduit.List
 import           Data.MediaBus
-import           Data.Word
 import           Control.Monad
 import           Data.MediaBus.Internal.Conduit
 
@@ -18,7 +17,6 @@ spec = describe "Stream conduits" $
 _helloWorld :: IO ()
 _helloWorld = void $
     runConduit (yieldMany ("Hello world" :: String) .|
-                    (synchronizeToClock :: Conduit Char IO (ClockSynced UtcClock Char)) .|
                     dbgShowC 1 "YO" .|
                     consume)
 
@@ -32,7 +30,7 @@ _yieldStream frames = yieldMany frames .|
 _reorderSomeFrames = void $
     _sampleSomeStream >>=
         \fs -> runConduit (_yieldStream fs .|
-                               overStreamC (reorderSeries (\(MkFrame t s _) -> MkFrameCtx 0
+                               overStreamC (reorderSeries (\(MkFrame t s _) -> MkFrameCtx (MkSourceId 0)
                                                                                           t
                                                                                           s)
                                                           2 .|

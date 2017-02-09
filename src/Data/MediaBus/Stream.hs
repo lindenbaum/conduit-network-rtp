@@ -41,10 +41,26 @@ import           Test.QuickCheck
 import           Data.Kind
 import           Data.Default
 
--- | A 'Frame' can be anything that has a start time and is exactly one time
--- unit long, it can respresent anything ranging from an audio buffer with 20ms
--- of audio to a single pulse coded audio sample, of course it could also be a
--- video frame or a chat message.
+-- data RawFrame i s t v = MkRawFrame { _rawFrameSourceId  :: i
+--                                    , _rawFrameSeqNum    :: s
+--                                    , _rawFrameTimestamp :: t
+--                                    , _rawFrameValue     :: v
+--                                    }
+
+-- makeLenses ''RawFrame
+
+-- instance (Show i, Show s, Show t, Show v) =>
+--          Show (RawFrame i s t v) where
+--     show (MkRawFrame i s t v) =
+--         "RAW ** " ++
+--             show i ++
+--                 " ** " ++
+--                     show s ++
+--                         " ** " ++
+--                             show t ++
+--                                 " ** " ++
+--                                     show v
+
 type SourceId' = SourceId Word32
 
 type SeqNum' = SeqNum Word16
@@ -87,11 +103,17 @@ instance (Show i, Show s, Show t) =>
                             show tsr ++
                                 " }}"
 
+-- | A 'Frame' can be anything that has a start time and is exactly one time
+-- unit long, it can respresent anything ranging from an audio buffer with 20ms
+-- of audio to a single pulse coded audio sample, of course it could also be a
+-- video frame or a chat message.
 data Frame s t c = MkFrame { _frameTimestamp :: t
                            , _frameSeqNum    :: s
                            , _frameValue     :: c
                            }
     deriving (Eq, Ord)
+
+deriving instance Functor (Frame s t)
 
 type Frame' r v = Frame SeqNum' (Ticks' r) v
 
@@ -120,9 +142,10 @@ instance (Show s, Show t, Show v) =>
                         ", v: " ++
                             show v
 
-newtype Stream i s t c =
-      MkStream { _stream :: Series (FrameCtx i s t) (Frame s t c) }
+newtype Stream i s t c = MkStream { _stream :: Streamish i s t c }
     deriving (Ord, Eq, Arbitrary)
+
+type Streamish i s t c = Series (FrameCtx i s t) (Frame s t c)
 
 type Stream' t c = Stream SourceId' SeqNum' (Ticks' t) c
 

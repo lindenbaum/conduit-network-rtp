@@ -3,7 +3,7 @@ TODO: Add RTCP support
 
 > module Data.MediaBus.Rtp.Packet
 >   ( RtpPacket(..), RtpHeader(..), HeaderExtension(..)
->   , RtpSeqNum(..)
+>   , type RtpSeqNum
 >   , deserialize, serialize)
 > where
 
@@ -17,7 +17,7 @@ TODO: Add RTCP support
 > import Text.Printf
 > import Data.Word
 > import Data.Bits
-
+> import Data.MediaBus.Sequence
 
 The relevant output will be contained in the 'Packet' and 'Header' data types.
 The Functor style of 'Packet' allows to keep the RTP header info around, while
@@ -47,23 +47,10 @@ To meaningfully compare them, this must be taken into account.
 E.g. when @x1 = 65535@ is the current sequence number and the next
 packet has @x2 = 0@ then in this context @x2 > x1@.
 
-This newtype wrapper allows to add a corresponding 'Ord' instance.
+A type alias to 'SeqNum' will ensure that 'Ord' respects the wrap-around,
+such that for example @0 <= 1@ and @65535 <= 0@.
 
-> newtype RtpSeqNum = MkRtpSeqNum {unSeqNum :: Word16}
->   deriving (Num, Show)
-
-The 'Eq' instance is straight forward:
-
-> instance Eq RtpSeqNum where
->   (MkRtpSeqNum !seqL) == (MkRtpSeqNum !seqR) = seqL == seqR
-
-
-This 'Ord' instance will regard @0 <= 1@ and @65535 <= 0@.
-
-> instance Ord RtpSeqNum where
->   (MkRtpSeqNum !seqL) <= (MkRtpSeqNum !seqR) =
->     seqL <= seqR && seqR - seqL < 32768
-
+> type RtpSeqNum = SeqNum Word16
 
 The 'HeaderExtension' is a profile specific, variable length, data block
 following the fixed size RTP header:
@@ -331,7 +318,7 @@ If a the extension flag is set, we must parse an optional header extension:
 >             , hasPadding = hasPadding'
 >             , hasMarker = hasMarker'
 >             , payloadType = payloadType'
->             , sequenceNumber = MkRtpSeqNum sequenceNumber'
+>             , sequenceNumber = MkSeqNum sequenceNumber'
 >             , timestamp = timestamp'
 >             , ssrc = ssrc'
 >             , csrcs = csrcs'
@@ -436,7 +423,7 @@ Of course, the interesting things happening in 'Header's instance:
 >           ssrc
 >           pt
 >           ts
->           (unSeqNum s)
+>           (_fromSeqNum s)
 >           (if m then 0 else 1::Int)
 >           (maybe "0" (("|" ++) . show) hes)
 
@@ -518,7 +505,7 @@ The second byte contains the marker and the payload type:
 
 The sequence number and timestamp:
 
->   putWord16be (unSeqNum sequenceNumber)
+>   putWord16be (_fromSeqNum sequenceNumber)
 >   putWord32be timestamp
 
 The SSRC:

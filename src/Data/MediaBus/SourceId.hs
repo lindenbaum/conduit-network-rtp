@@ -11,7 +11,7 @@ import           Data.Default
 -- | Things that can be uniquely identified by a looking at a (much simpler)
 -- representation, the 'identity'.
 newtype SourceId i = MkSourceId { _sourceId :: i }
-    deriving (Eq, Arbitrary, Default, Ord, Num)
+    deriving (Eq, Arbitrary, Default, Ord)
 
 makeLenses ''SourceId
 

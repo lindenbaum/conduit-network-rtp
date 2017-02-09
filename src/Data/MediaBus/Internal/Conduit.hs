@@ -2,9 +2,11 @@ module Data.MediaBus.Internal.Conduit
     ( overRightC
     , fmapMC
     , dbgShowC
+    , dbgShowSink
     ) where
 
 import           Conduit
+import           Data.Conduit.List
 import           Control.Lens
 import           Control.Monad.State.Strict as State
 import           Data.Functor
@@ -55,3 +57,6 @@ dbgShowC probability msg =
                     State.put (g', 0)
                 else State.put (g', omitted + 1)
             yield x
+
+dbgShowSink :: (Show a, Monad m) => Double -> String -> Consumer a m [a]
+dbgShowSink probability msg = dbgShowC probability msg .| consume

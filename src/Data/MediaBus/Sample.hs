@@ -2,6 +2,7 @@
 
 module Data.MediaBus.Sample
     ( SampleBuffer(..)
+    , sampleBufferFromByteString
     , sampleBufferToList
     , sampleBufferFromList
     , sampleVector
@@ -19,6 +20,13 @@ import           Control.Monad.ST             ( ST, runST )
 import           GHC.Exts                     ( IsList(..) )
 import           Data.Typeable
 import           Data.MediaBus.Clock
+import qualified Data.ByteString              as B
+import qualified Data.ByteString.Unsafe       as UB
+import qualified Data.Vector.Storable.Mutable as MV
+import           Foreign.Ptr
+import           Foreign.ForeignPtr
+import qualified Data.Vector.Storable         as V
+import           Data.Word
 
 -- | A sample is a discrete value of a continuous signal, periodically sampled
 -- at the sampling frequency. This is a full buffer of those things.
@@ -52,6 +60,18 @@ instance SV.Storable s =>
     type Item (SampleBuffer s) = s
     fromList = sampleBufferFromList
     toList = sampleBufferToList
+
+sampleBufferFromByteString :: B.ByteString -> IO (SampleBuffer Word8)
+sampleBufferFromByteString bs =
+    UB.unsafeUseAsCStringLen bs doCopy
+  where
+    doCopy (charP, len) = do
+        let word8P :: Ptr Word8
+            word8P = castPtr charP
+        word8FP <- newForeignPtr_ word8P
+        let vUnsafe = MV.unsafeFromForeignPtr0 word8FP len
+        v <- V.freeze vUnsafe
+        return (MkSampleBuffer v)
 
 sampleBufferToList :: SV.Storable s => SampleBuffer s -> [s]
 sampleBufferToList = SV.toList . _sampleVector

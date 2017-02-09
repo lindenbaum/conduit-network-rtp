@@ -1,12 +1,14 @@
 module Data.MediaBus.Internal.Series
     ( Series(..)
     , type Series'
-    , _Start
     , _Next
-    , seriesStartValue
-    , seriesValue
+    , _Start
+    , AsSeries(..)
+    , AsSeriesStart(..)
+    , AsSeriesNext(..)
     , StartingFrom(..)
     , startingFromValue
+    , foldSeriesC
     , overSeriesC'
     , overSeriesC
     , monotoneSeriesC
@@ -17,6 +19,36 @@ import           Conduit
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Test.QuickCheck
+import           Data.Bifunctor
+
+class (SetSeriesStart s (GetSeriesStart s) ~ s) =>
+      AsSeriesStart s where
+    type GetSeriesStart s
+    type SetSeriesStart s t
+    seriesStart :: Prism s (SetSeriesStart s n) (GetSeriesStart s) n
+
+class (SetSeriesNext s (GetSeriesNext s) ~ s) => AsSeriesNext s where
+    type GetSeriesNext s
+    type SetSeriesNext s t
+    seriesNext :: Prism s (SetSeriesNext s n) (GetSeriesNext s) n
+
+class AsSeries s a b | s -> a, s -> b where
+    seriesStart' :: Prism' s a
+    seriesNext' :: Prism' s b
+
+instance AsSeries (Either a b) a b where
+    seriesStart' = _Left
+    seriesNext' = _Right
+
+instance AsSeriesStart (Either a b) where
+    type GetSeriesStart (Either a b) = a
+    type SetSeriesStart (Either a b) n = (Either n b)
+    seriesStart = _Left
+
+instance AsSeriesNext (Either a b) where
+    type GetSeriesNext (Either a b) = b
+    type SetSeriesNext (Either a b) n = (Either a n)
+    seriesNext = _Right
 
 data Series a b = Next { _seriesValue :: b }
                 | Start { _seriesStartValue :: a }
@@ -43,12 +75,28 @@ instance (Arbitrary a, Arbitrary b) =>
             then Next <$> arbitrary
             else Start <$> arbitrary
 
-makeLenses ''Series
-
 makePrisms ''Series
+
+instance AsSeries (Series a b) a b where
+    seriesNext' = _Next
+    seriesStart' = _Start
+
+instance AsSeriesNext (Series a b) where
+    type GetSeriesNext (Series a b) = b
+    type SetSeriesNext (Series a b) n = (Series a n)
+    seriesNext = _Next
+
+instance AsSeriesStart (Series a b) where
+    type GetSeriesStart (Series a b) = a
+    type SetSeriesStart (Series a b) n = (Series n b)
+    seriesStart = _Start
 
 instance Functor (Series a) where
     fmap = over _Next
+
+instance Bifunctor Series where
+    first = over _Start
+    second = over _Next
 
 newtype StartingFrom a = MkStartingFrom { _startingFromValue :: a }
     deriving (Eq, Ord, Arbitrary)
@@ -60,6 +108,11 @@ instance Show a =>
     show (MkStartingFrom x) =
         "(STARTING-FROM: " ++ show x ++ ")"
 
+foldSeriesC :: Monad m
+             => (StartingFrom a -> ConduitM b c m ())
+             -> Conduit (Series a b) m c
+foldSeriesC = error "TODO"
+
 overSeriesC' :: Monad m
              => (b -> a)
              -> (StartingFrom a -> ConduitM b c m ())
@@ -70,7 +123,8 @@ overSeriesC' fInitialStart fc =
     starts (Next x) = do
         let r = fInitialStart x
         -- yield (Start r) -- TODO should we fake a 'Start' event?
-        (yield x >> nexts) .| runNested r
+        (yield x >> nexts) .|
+            runNested r
         restart
     starts (Start r) = do
         yield (Start r)
