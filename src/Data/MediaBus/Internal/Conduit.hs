@@ -48,12 +48,12 @@ dbgShowC probability msg =
             let (p, g') = randomR (0, 1) g
             if p < probability
                 then do
-                    let prefix = if omitted == 0
-                                 then ""
-                                 else "(" ++
-                                     show omitted ++
-                                     " messages omitted) "
-                    traceM (prefix ++ msg ++ ": " ++ show x)
+                    let omittedmsg = if omitted == 0
+                                     then ""
+                                     else " *** " ++
+                                          show omitted ++
+                                          " messages omitted"
+                    traceM (msg ++ ": " ++ show x ++ omittedmsg)
                     State.put (g', 0)
                 else State.put (g', omitted + 1)
             yield x

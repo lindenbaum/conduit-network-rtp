@@ -3,6 +3,7 @@
 module Data.MediaBus.Sample
     ( SampleBuffer(..)
     , sampleBufferFromByteString
+    , byteStringFromSampleBuffer
     , sampleBufferToList
     , sampleBufferFromList
     , sampleVector
@@ -14,19 +15,14 @@ module Data.MediaBus.Sample
     ) where
 
 import           Control.Lens
-import qualified Data.Vector.Storable         as SV
-import           Data.Vector.Storable.Mutable as M ( MVector(..) )
-import           Control.Monad.ST             ( ST, runST )
-import           GHC.Exts                     ( IsList(..) )
+import qualified Data.Vector.Storable            as SV
+import           Data.Vector.Storable.Mutable    as M ( MVector(..) )
+import           Control.Monad.ST                ( ST, runST )
+import           GHC.Exts                        ( IsList(..) )
 import           Data.Typeable
 import           Data.MediaBus.Clock
-import qualified Data.ByteString              as B
-import qualified Data.ByteString.Unsafe       as UB
-import qualified Data.Vector.Storable.Mutable as MV
-import           Foreign.Ptr
-import           Foreign.ForeignPtr
-import qualified Data.Vector.Storable         as V
-import           Data.Word
+import qualified Data.ByteString                 as B
+import qualified Data.Vector.Storable.ByteString as Spool
 
 -- | A sample is a discrete value of a continuous signal, periodically sampled
 -- at the sampling frequency. This is a full buffer of those things.
@@ -61,17 +57,13 @@ instance SV.Storable s =>
     fromList = sampleBufferFromList
     toList = sampleBufferToList
 
-sampleBufferFromByteString :: B.ByteString -> IO (SampleBuffer Word8)
-sampleBufferFromByteString bs =
-    UB.unsafeUseAsCStringLen bs doCopy
-  where
-    doCopy (charP, len) = do
-        let word8P :: Ptr Word8
-            word8P = castPtr charP
-        word8FP <- newForeignPtr_ word8P
-        let vUnsafe = MV.unsafeFromForeignPtr0 word8FP len
-        v <- V.freeze vUnsafe
-        return (MkSampleBuffer v)
+sampleBufferFromByteString :: SV.Storable a => B.ByteString -> SampleBuffer a
+sampleBufferFromByteString =
+    MkSampleBuffer . Spool.byteStringToVector
+
+byteStringFromSampleBuffer :: SV.Storable a => SampleBuffer a -> B.ByteString
+byteStringFromSampleBuffer =
+    Spool.vectorToByteString . _sampleVector
 
 sampleBufferToList :: SV.Storable s => SampleBuffer s -> [s]
 sampleBufferToList = SV.toList . _sampleVector

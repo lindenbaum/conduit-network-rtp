@@ -19,6 +19,7 @@ import           Control.Monad.State.Strict
 import           Data.Word
 import           Debug.Trace
 import           Data.Default
+import           Text.Printf
 
 class SetSeqNum t (GetSeqNum t) ~ t =>
       HasSeqNum t where
@@ -39,13 +40,13 @@ newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
 makeLenses ''SeqNum
 
 instance HasSeqNum (SeqNum s) where
-  type GetSeqNum (SeqNum s) = s
-  type SetSeqNum (SeqNum s) s' = SeqNum s'
-  seqNum = fromSeqNum
+    type GetSeqNum (SeqNum s) = s
+    type SetSeqNum (SeqNum s) s' = SeqNum s'
+    seqNum = fromSeqNum
 
 instance Show s =>
          Show (SeqNum s) where
-    show (MkSeqNum s) = "SEQNUM: " ++ show s
+    show (MkSeqNum s) = printf "SEQNUM: %10s" (show s)
 
 instance (Eq a, IsMonotone a) =>
          Ord (SeqNum a) where
@@ -111,8 +112,7 @@ reorderSeries bToA windowSize = do
     go queue minIndex dropsAllowed = do
         mx <- await
         case mx of
-            Nothing ->
-                flushQueue
+            Nothing -> flushQueue
             Just s@(Start a) -> do
                 flushQueue
                 yield s

@@ -2,6 +2,7 @@ module Data.MediaBus.Clock
     ( HasDuration(..)
     , IsTiming(..)
     , HasTimestamp(..)
+    , Ticks(..)
     , Timing(..)
     , mkTicks
     , convertTicks

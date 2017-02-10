@@ -3,14 +3,14 @@ TODO: Add RTCP support
 
 > module Data.MediaBus.Rtp.Packet
 >   ( RtpPacket(..), RtpHeader(..), HeaderExtension(..)
->   , type RtpSeqNum
+>   , type RtpSeqNum, RtpSsrc(..), RtpTimestamp(..)
+>   , RtpPayload(..), payloadType, payload
 >   , deserialize, serialize)
 > where
 
 > import qualified Data.ByteString as B
-> import Control.Applicative
 > import Control.Monad
-> import Data.Monoid
+> import Data.Default
 > import Data.Maybe
 > import Data.Serialize.Get
 > import Data.Serialize.Put
@@ -18,6 +18,8 @@ TODO: Add RTCP support
 > import Data.Word
 > import Data.Bits
 > import Data.MediaBus.Sequence
+> import Control.Lens
+> import Data.MediaBus.Sample
 
 The relevant output will be contained in the 'Packet' and 'Header' data types.
 The Functor style of 'Packet' allows to keep the RTP header info around, while
@@ -25,21 +27,36 @@ converting and analysing the packet.
 
 > data RtpPacket =
 >   MkRtpPacket { header :: !RtpHeader
->               , body   :: !B.ByteString }
+>               , body   :: !RtpPayload }
 >   deriving (Eq)
 
+The rtp header defines the logical source(s), the sequence number and the
+timestamp of the respecitive 'RtpPayload'.
 
 > data RtpHeader =
 >   MkRtpHeader { version         :: !Word8
 >               , hasPadding      :: !Bool
 >               , hasMarker       :: !Bool
->               , payloadType     :: !Word8
 >               , sequenceNumber  :: !RtpSeqNum
->               , timestamp       :: !Word32
->               , ssrc            :: !Word32
->               , csrcs           :: ![Word32]
+>               , timestamp       :: !RtpTimestamp
+>               , ssrc            :: !RtpSsrc
+>               , csrcs           :: ![RtpSsrc]
 >               , headerExtension :: !(Maybe HeaderExtension)}
 >   deriving (Eq)
+
+An SSRC is basically just a 'Word32'.
+
+> newtype RtpSsrc = MkRtpSsrc { rtpSsrc :: Word32 }
+>   deriving (Eq, Ord, Num, Bits, Default)
+> instance Show RtpSsrc where
+>   show (MkRtpSsrc w) = printf "ssrc:%10d" w
+
+A timestamp is basically just a 'Word32', too.
+
+> newtype RtpTimestamp = MkRtpTimestamp { _rtpTimestamp :: Word32 }
+>   deriving (Eq, Ord, Num, Bits, Default)
+> instance Show RtpTimestamp where
+>   show (MkRtpTimestamp w) = printf "ts:%10d" w
 
 SeqNum numbers are special because they wrap-around.
 
@@ -60,10 +77,18 @@ following the fixed size RTP header:
 >                     , headerExtensionBody  :: ![Word32] }
 >   deriving (Read,Eq,Show)
 
+The payload contains the actual media data, i.e. the raw payload bytes together
+with an 8-bit 'payloadType'.
+
+> data RtpPayload = MkRtpPayload { _payloadType :: Word8
+>                                , _payload     :: SampleBuffer Word8
+>                                }
+>    deriving (Eq)
+> makeLenses ''RtpPayload
 
 Deserialize a complete RTP datagram:
 
-> deserialize :: B.ByteString -> RtpPacket
+> deserialize :: B.ByteString -> RtpPacket -- TODO: return as Either!!!!!!
 > deserialize bs = either error id (runGet getPacket bs)
 
 Below are only internal functions.
@@ -75,7 +100,7 @@ This function will parse an 'Rtp' packet from a 'ByteString':
 
 First read the header:
 
->   h <- getHeader
+>   (pt, h) <- getPayloadTypeAndHeader
 
 Then read the remaining bytes:
 
@@ -84,9 +109,10 @@ Then read the remaining bytes:
 
 And then adjust for padding:
 
->   let body = if hasPadding h
->                 then adjustPadding remainingBytes
->                 else remainingBytes
+>   let bodyBytes = if hasPadding h
+>                   then adjustPadding remainingBytes
+>                   else remainingBytes
+>       body = MkRtpPayload pt (sampleBufferFromByteString bodyBytes)
 
 Wrap everything up and return it:
 
@@ -102,8 +128,8 @@ Ok now to adjust for padding:
 
 This function will parse an 'RtpHeader':
 
-> getHeader :: Get RtpHeader
-> getHeader = do
+> getPayloadTypeAndHeader :: Get (Word8, RtpHeader)
+> getPayloadTypeAndHeader = do
 
 The values are in network byte order, i.e. big-endian.
 
@@ -313,15 +339,15 @@ If a the extension flag is set, we must parse an optional header extension:
 >                    then Just <$> getHeaderExtension
 >                    else return Nothing
 
->   return (MkRtpHeader
+>   return ( payloadType'
+>          , MkRtpHeader
 >             { version = version'
 >             , hasPadding = hasPadding'
 >             , hasMarker = hasMarker'
->             , payloadType = payloadType'
 >             , sequenceNumber = MkSeqNum sequenceNumber'
->             , timestamp = timestamp'
->             , ssrc = ssrc'
->             , csrcs = csrcs'
+>             , timestamp = MkRtpTimestamp timestamp'
+>             , ssrc = MkRtpSsrc ssrc'
+>             , csrcs = MkRtpSsrc <$> csrcs'
 >             , headerExtension = extension })
 
 
@@ -361,71 +387,20 @@ Here are the type class instances:
 
 > instance Show RtpPacket where
 >   show (MkRtpPacket hdr bd) =
->        printf "RTP %s << " (show hdr)
->     ++ (if B.length bd > 10
->         then unwords (printf "%0.4x" <$> B.unpack (B.take 10 bd)) ++ " ..."
->         else unwords (printf "%0.4x" <$> B.unpack bd))
->     ++ " >>\n"
-
-A monoid instance can be nice:
-
-> instance Monoid RtpPacket where
->   mempty = MkRtpPacket mempty mempty
->   mappend (MkRtpPacket h1 b1) (MkRtpPacket h2 b2) =
->     MkRtpPacket (h1 <> h2) (b1 <> b2)
-
-Of course, the interesting things happening in 'Header's instance:
-
-> instance Monoid RtpHeader where
->   mempty = MkRtpHeader 2 False False 0 0 0 0 [] Nothing
->   mappend (MkRtpHeader v1 p1 m1 pt1 seq1 ts1 ssrc1 csrcs1 hes1)
->           (MkRtpHeader v2 p2 m2 pt2 seq2 ts2 ssrc2 csrcs2 hes2) =
->     MkRtpHeader
->          (max v1 v2)
->          (p1 || p2)
->          (m1 || m2)
->          (if pt1 == 0
->             then pt2
->             else
->               if pt2 == 0
->                 then pt1
->                 else
->                   if pt1 /= pt2
->                      then error "payload type mismatch"
->                      else pt1)
->          (if seq1 == 0
->             then seq2
->             else
->               if seq2 == 0
->                 then seq1
->                 else min seq1 seq2)
->          (if ts1 == 0
->             then ts2
->             else
->               if ts2 == 0
->                 then ts1
->                 else min ts1 ts2)
->          (if ssrc1 == 0
->             then ssrc2
->             else
->               if ssrc2 == 0
->                 then ssrc1
->                 else
->                   if ssrc1 /= ssrc2
->                      then error "ssrc mismatch"
->                      else ssrc1)
->          (csrcs1 <> csrcs2)
->          (hes1 <|> hes2)
+>        "(RTP: " ++ show hdr ++ ", " ++ show bd  ++ ")"
 
 > instance Show RtpHeader where
->   show (MkRtpHeader _ _ m pt s ts ssrc _csrcs hes) =
->     printf "ssrc:%09d/pt:%d/ts:%09d/seq:%05d/m:%d/e:%s"
->           ssrc
->           pt
->           ts
+>   show (MkRtpHeader _ _ m s ts ssrc _csrcs hes) =
+>     printf "%s/%s/seq:%05d/m:%d/e:%s"
+>           (show ssrc)
+>           (show ts)
 >           (_fromSeqNum s)
 >           (if m then 0 else 1::Int)
 >           (maybe "0" (("|" ++) . show) hes)
+
+> instance Show RtpPayload where
+>   show (MkRtpPayload pt bd) =
+>     printf "(PAYLOAD: type:%d, content:%s)" pt (show bd)
 
 Serialization is straight forward the opposite of deserialization.
 
@@ -437,12 +412,13 @@ Serialization is straight forward the opposite of deserialization.
 
 First write the header then the body.
 
->   putHeader h
->   putByteString b
+>   putPayloadTypeAndHeader (_payloadType b) h
+>   putByteString (byteStringFromSampleBuffer (_payload b))
 
 Calculate number of bytes required for padding.
 
->   let paddingLen = fromIntegral ((64 - ((B.length b) `rem` 64)) `rem` 64)
+>   let paddingLen = fromIntegral
+>         ((64 - ((sampleCount (_payload b)) `rem` 64)) `rem` 64)
 
 The 'Header' field 'hasPadding', which is an input to this function,
 is interpreted to indicate if padding is /allowed/.
@@ -459,8 +435,8 @@ number of bytes in that list.
 
 Writing out the header:
 
-> putHeader :: RtpHeader -> Put
-> putHeader MkRtpHeader{..} = do
+> putPayloadTypeAndHeader :: Word8 -> RtpHeader -> Put
+> putPayloadTypeAndHeader payloadType' MkRtpHeader{..} = do
 
 To repeat the RTP header structure:
 
@@ -501,20 +477,20 @@ The second byte contains the marker and the payload type:
 
 >   putWord8
 >     (setBitTo 7 hasMarker
->      (payloadType .&. 0x7f))
+>      (payloadType' .&. 0x7f))
 
 The sequence number and timestamp:
 
 >   putWord16be (_fromSeqNum sequenceNumber)
->   putWord32be timestamp
+>   putWord32be (_rtpTimestamp timestamp)
 
 The SSRC:
 
->   putWord32be ssrc
+>   putWord32be (rtpSsrc ssrc)
 
 The maximum of 16 csrcs:
 
->   mapM_ putWord32be (take 16 csrcs)
+>   mapM_ putWord32be (rtpSsrc <$> (take 16 csrcs))
 
 And last but not least the header extensions:
 
@@ -536,5 +512,5 @@ length to 0xffff since the length field is only 16 bits wide.
 A litte binary helper:
 
 > setBitTo :: Bits a => Int -> Bool -> a -> a
-> setBitTo ix cond a =
->   (if cond then setBit else clearBit) a ix
+> setBitTo i cond a =
+>   (if cond then setBit else clearBit) a i

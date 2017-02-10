@@ -16,6 +16,9 @@ module Data.MediaBus.Stream
     , Stream(..)
     , Stream'
     , stream
+    , yieldStreamish
+    , foldStreamC
+    , mapStreamC
     , Transcoder(..)
     , overStreamC
     , overFramesC
@@ -40,15 +43,14 @@ import           Data.Word
 import           Test.QuickCheck
 import           Data.Kind
 import           Data.Default
+import           Text.Printf
 
 -- data RawFrame i s t v = MkRawFrame { _rawFrameSourceId  :: i
 --                                    , _rawFrameSeqNum    :: s
 --                                    , _rawFrameTimestamp :: t
 --                                    , _rawFrameValue     :: v
 --                                    }
-
 -- makeLenses ''RawFrame
-
 -- instance (Show i, Show s, Show t, Show v) =>
 --          Show (RawFrame i s t v) where
 --     show (MkRawFrame i s t v) =
@@ -60,7 +62,6 @@ import           Data.Default
 --                             show t ++
 --                                 " ** " ++
 --                                     show v
-
 type SourceId' = SourceId Word32
 
 type SeqNum' = SeqNum Word16
@@ -94,14 +95,8 @@ instance (Default i, Default s, Default t) =>
 
 instance (Show i, Show s, Show t) =>
          Show (FrameCtx i s t) where
-    show (MkFrameCtx sid snr tsr) =
-        "{{ source: " ++
-            show sid ++
-                ", sn-ref: " ++
-                    show snr ++
-                        ", ts-ref: " ++
-                            show tsr ++
-                                " }}"
+    show (MkFrameCtx sid tsr snr) =
+        printf "FRAME-CTX: %15s | %15s | %15s" (show sid) (show snr) (show tsr)
 
 -- | A 'Frame' can be anything that has a start time and is exactly one time
 -- unit long, it can respresent anything ranging from an audio buffer with 20ms
@@ -134,13 +129,8 @@ instance (Arbitrary c, Arbitrary s, Arbitrary t) =>
 
 instance (Show s, Show t, Show v) =>
          Show (Frame s t v) where
-    show (MkFrame sn ts v) =
-        "FRAME sn: " ++
-            show sn ++
-                ", ts: " ++
-                    show ts ++
-                        ", v: " ++
-                            show v
+    show (MkFrame ts sn v) =
+        printf "FRAME: %15s | %15s | %s" (show sn) (show ts) (show v)
 
 newtype Stream i s t c = MkStream { _stream :: Streamish i s t c }
     deriving (Ord, Eq, Arbitrary)
@@ -148,6 +138,19 @@ newtype Stream i s t c = MkStream { _stream :: Streamish i s t c }
 type Streamish i s t c = Series (FrameCtx i s t) (Frame s t c)
 
 type Stream' t c = Stream SourceId' SeqNum' (Ticks' t) c
+
+yieldStreamish :: Monad m => Streamish i s t c -> Source m (Stream i s t c)
+yieldStreamish = yield . MkStream
+
+foldStreamC :: Monad m
+            => (StartingFrom (FrameCtx i s t) -> Conduit (Frame s t c) m o)
+            -> Conduit (Stream i s t c) m o
+foldStreamC = mapInput _stream (Just . MkStream) . foldSeriesC
+
+mapStreamC :: Monad m
+           => Conduit (Streamish i s t c) m (Streamish i' s' t' c')
+           -> Conduit (Stream i s t c) m (Stream i' s' t' c')
+mapStreamC = mapInput _stream (Just . MkStream) . mapOutput MkStream
 
 makeLenses ''Stream
 
