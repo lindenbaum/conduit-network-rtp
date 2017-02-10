@@ -28,19 +28,30 @@ rtpSource = foldStreamC $
         evalStateC (MkRRState (MkFrameCtx def def def) True) $
             awaitForever processFrames
   where
-    processFrames (MkFrame _ _ contentIn) = do
-        let rtpPacket = Rtp.deserialize contentIn
-            rtpHeader = Rtp.header rtpPacket
-        (oldCtx, res) <- updateState rtpHeader
-        when (res == SourceHasChanged)
-             (traceSourceChangeM oldCtx >> yieldStreamStart)
-        yieldStreamNext (Rtp.body rtpPacket)
-    traceSourceChangeM oldCtx = do
+    processFrames (MkFrame _ _ contentIn) =
+        case Rtp.deserialize contentIn of
+            Left rtpError -> traceRtpError rtpError
+            Right rtpPacket -> do
+                let rtpHeader = Rtp.header rtpPacket
+                wasFirst <- use isFirstPacket
+                (oldCtx, res) <- updateState rtpHeader
+                when (res == SourceHasChanged)
+                     (traceSourceChangeM wasFirst oldCtx >> yieldStreamStart)
+                yieldStreamNext (Rtp.body rtpPacket)
+
+    traceRtpError e = do
+        ctx <- use currCtx
+        traceM (printf "RTP-ERROR:%s  Ctx: %s\n" e (show ctx))
+
+    traceSourceChangeM isFirst oldCtx = do
         newCtx <- use currCtx
-        traceM (printf "RTP-Restart:\nOld-Ctx: %s\nNew-Ctx: %s\n"
-                       (show oldCtx)
-                       (show newCtx))
-        return ()
+        if isFirst
+            then traceM (printf "RTP-START:\n  Ctx: %s\n" (show newCtx))
+            else do
+                traceM (printf "RTP-RESTART:\n  Old-Ctx: %s\n  New-Ctx: %s\n"
+                               (show oldCtx)
+                               (show newCtx))
+
     updateState rtpHeader = do
         oldCtx <- currCtx <<%=
                       ((frameCtxSeqNumRef .~ Rtp.sequenceNumber rtpHeader)
@@ -80,3 +91,5 @@ data RRSourceChange = SourceHasChanged | SourceHasNotChanged
     deriving (Eq)
 
 data RtpPayloadContext = MkRtpPayloadContext
+
+type RtpOutStream = Stream Rtp.RtpSsrc Rtp.RtpSeqNum Rtp.RtpTimestamp B.ByteString

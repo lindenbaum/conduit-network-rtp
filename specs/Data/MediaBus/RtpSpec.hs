@@ -79,6 +79,26 @@ spec = describe "rtpSource" $ do
             countStarts (_stream <$> runTestConduit inputs) `shouldBe`
                 3
 
+    it "can handle broken packets without crashing" $
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+                     , mkTestRtpPacket 0 0 777
+                     , mkTestRtpPacket 0 0 777
+                     , mkBrokenTestRtpPacket
+                     , mkBrokenTestRtpPacket
+                     , mkTestRtpPacket 0 0 777
+                     , mkTestRtpPacket 0 0 777
+                     , mkBrokenTestRtpPacket
+                     , mkTestRtpPacket 0 0 777
+                     , mkTestRtpPacket 0 0 777
+                     , mkTestRtpPacket 0 0 777
+                     ]
+        in
+            length (runTestConduit inputs) `shouldBe`
+                8
+
+mkBrokenTestRtpPacket :: Stream Int Int Int B.ByteString
+mkBrokenTestRtpPacket = MkStream (Next (MkFrame 0 0 (B.pack [0,0,0])))
+
 mkTestRtpPacket :: Rtp.RtpSsrc
                 -> Rtp.RtpSeqNum
                 -> Rtp.RtpTimestamp

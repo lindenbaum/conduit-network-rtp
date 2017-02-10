@@ -88,8 +88,8 @@ with an 8-bit 'payloadType'.
 
 Deserialize a complete RTP datagram:
 
-> deserialize :: B.ByteString -> RtpPacket -- TODO: return as Either!!!!!!
-> deserialize bs = either error id (runGet getPacket bs)
+> deserialize :: B.ByteString -> Either String RtpPacket
+> deserialize = runGet getPacket
 
 Below are only internal functions.
 
