@@ -27,7 +27,8 @@ class (SetSeriesStart s (GetSeriesStart s) ~ s) =>
     type SetSeriesStart s t
     seriesStart :: Prism s (SetSeriesStart s n) (GetSeriesStart s) n
 
-class (SetSeriesNext s (GetSeriesNext s) ~ s) => AsSeriesNext s where
+class (SetSeriesNext s (GetSeriesNext s) ~ s) =>
+      AsSeriesNext s where
     type GetSeriesNext s
     type SetSeriesNext s t
     seriesNext :: Prism s (SetSeriesNext s n) (GetSeriesNext s) n
@@ -108,10 +109,23 @@ instance Show a =>
     show (MkStartingFrom x) =
         "(STARTING-FROM: " ++ show x ++ ")"
 
+-- | Fold all 'Next' values using a stateful conduit, which is /restarted/
+-- everytime a 'Start' value is received.
+--
+-- NOTE: Up to the first 'Start' value, all input is discarded.
 foldSeriesC :: Monad m
-             => (StartingFrom a -> ConduitM b c m ())
-             -> Conduit (Series a b) m c
-foldSeriesC = error "TODO"
+            => (StartingFrom a -> Conduit b m c)
+            -> Conduit (Series a b) m c
+foldSeriesC f = awaitForever awaitStart
+  where
+    awaitStart (Next _) = return ()
+    awaitStart (Start a) = goNext .| f (MkStartingFrom a)
+    goNext = do
+        mb <- await
+        case mb of
+            Just (Next b) -> yield b >> goNext
+            Just (Start a) -> leftover (Start a)
+            Nothing -> return ()
 
 overSeriesC' :: Monad m
              => (b -> a)
