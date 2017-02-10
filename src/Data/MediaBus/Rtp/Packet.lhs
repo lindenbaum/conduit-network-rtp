@@ -17,6 +17,7 @@ TODO: Add RTCP support
 > import Text.Printf
 > import Data.Word
 > import Data.Bits
+> import Data.MediaBus.Internal.Monotone
 > import Data.MediaBus.Sequence
 > import Control.Lens
 > import Data.MediaBus.Sample
@@ -54,9 +55,16 @@ An SSRC is basically just a 'Word32'.
 A timestamp is basically just a 'Word32', too.
 
 > newtype RtpTimestamp = MkRtpTimestamp { _rtpTimestamp :: Word32 }
->   deriving (Eq, Ord, Num, Bits, Default)
+>   deriving (Eq, Num, Bits, Default)
 > instance Show RtpTimestamp where
 >   show (MkRtpTimestamp w) = printf "ts:%10d" w
+
+The 'Ord' instance of the 'RtpTimestamp' should handle the wrap-around
+correctly, therefore we use the 'IsMonotonic' method 'succeeds'.
+
+> instance Ord RtpTimestamp where
+>   (MkRtpTimestamp l) `compare` (MkRtpTimestamp r) =
+>       if l == r then EQ else if l `succeeds` r then GT else LT
 
 SeqNum numbers are special because they wrap-around.
 

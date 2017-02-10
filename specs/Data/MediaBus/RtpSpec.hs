@@ -65,19 +65,43 @@ spec = describe "rtpSource" $ do
             countStarts (_stream <$> runTestConduit inputs) `shouldBe`
                 3
 
-    it "yields 'Start' when the timestamps change too much" $
+    it "yields 'Start' when the sequence numbers change too much" $
         let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
-                     , mkTestRtpPacket 0 01 1000000
-                     , mkTestRtpPacket 0 02 1000160
-                     , mkTestRtpPacket 0 03 1000320
-                     , mkTestRtpPacket 0 04 1002480
-                     , mkTestRtpPacket 0 05 1002640
-                     , mkTestRtpPacket 0 06 1000640
-                     , mkTestRtpPacket 0 07 1000800
+                     , mkTestRtpPacket 0 01 0
+                     , mkTestRtpPacket 0 02 0
+                     , mkTestRtpPacket 0 03 0
+                     , mkTestRtpPacket 0 24 0
+                     , mkTestRtpPacket 0 25 0
+                     , mkTestRtpPacket 0 06 0
+                     , mkTestRtpPacket 0 07 0
                      ]
         in
             countStarts (_stream <$> runTestConduit inputs) `shouldBe`
                 3
+
+    it "yields no 'Start' when the sequence number wraps around" $
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+                     , mkTestRtpPacket 0 (negate 3) 0
+                     , mkTestRtpPacket 0 (negate 2) 0
+                     , mkTestRtpPacket 0 (negate 1) 0
+                     , mkTestRtpPacket 0 0 0
+                     , mkTestRtpPacket 0 1 0
+                     ]
+        in
+            countStarts (_stream <$> runTestConduit inputs) `shouldBe`
+                1
+
+    it "yields no 'Start' when the timestamp wraps around" $
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+                     , mkTestRtpPacket 0 0 (negate 300)
+                     , mkTestRtpPacket 0 0 (negate 200)
+                     , mkTestRtpPacket 0 0 (negate 100)
+                     , mkTestRtpPacket 0 0 0
+                     , mkTestRtpPacket 0 0 100
+                     ]
+        in
+            countStarts (_stream <$> runTestConduit inputs) `shouldBe`
+                1
 
     it "can handle broken packets without crashing" $
         let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
