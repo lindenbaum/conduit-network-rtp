@@ -47,10 +47,9 @@ rtpSource = foldStreamC $
         newCtx <- use currCtx
         if isFirst
             then traceM (printf "RTP-START:\n  Ctx: %s\n" (show newCtx))
-            else do
-                traceM (printf "RTP-RESTART:\n  Old-Ctx: %s\n  New-Ctx: %s\n"
-                               (show oldCtx)
-                               (show newCtx))
+            else traceM (printf "RTP-RESTART:\n  Old-Ctx: %s\n  New-Ctx: %s\n"
+                                (show oldCtx)
+                                (show newCtx))
 
     updateState rtpHeader = do
         oldCtx <- currCtx <<%=
