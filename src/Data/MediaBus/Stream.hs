@@ -12,7 +12,7 @@ module Data.MediaBus.Stream
     , type Frame'
     , frameSeqNum
     , frameTimestamp
-    , frameValue
+    , framePayload
     , Stream(..)
     , Stream'
     , stream
@@ -104,7 +104,7 @@ instance (Show i, Show s, Show t) =>
 -- video frame or a chat message.
 data Frame s t c = MkFrame { _frameTimestamp :: t
                            , _frameSeqNum    :: s
-                           , _frameValue     :: c
+                           , _framePayload   :: c
                            }
     deriving (Eq, Ord)
 
@@ -121,7 +121,7 @@ instance HasTimestamp (Frame s t c) where
 
 instance HasDuration c =>
          HasDuration (Frame s t c) where
-    getDuration = getDuration . _frameValue
+    getDuration = getDuration . _framePayload
 
 instance (Arbitrary c, Arbitrary s, Arbitrary t) =>
          Arbitrary (Frame s t c) where
@@ -196,7 +196,7 @@ frameResamplerM fTicks fContent =
     doContent = lift .
         mapMOf (stream .
                     _Next .
-                        frameValue)
+                        framePayload)
                fContent
     doTicks = over stream
                    (over (_Start . frameCtxTimestampRef) fTicks .
@@ -224,4 +224,4 @@ concatStreamContents :: (Monoid c, Monad m) => StreamSink i s t c m c
 concatStreamContents = foldStream (fromMaybe mempty .
                                        (^? stream .
                                                _Next .
-                                                   frameValue))
+                                                   framePayload))

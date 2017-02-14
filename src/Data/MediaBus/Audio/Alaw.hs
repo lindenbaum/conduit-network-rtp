@@ -27,10 +27,10 @@ instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel
 
 instance Transcoder ALaw S16 s t where
-    transcode = mapC (over frameValue (MkS16 . decodeAlawFrame . _alawSample))
+    transcode = mapC (over framePayload (MkS16 . decodeAlawFrame . _alawSample))
 
 instance Transcoder S16 ALaw s t where
-    transcode = mapC (over frameValue (MkALaw . encodeAlawFrame . _s16Sample))
+    transcode = mapC (over framePayload (MkALaw . encodeAlawFrame . _s16Sample))
 
 decodeAlawFrame :: Word8 -> Int16
 decodeAlawFrame !a' = let !a = a' `xor` 85

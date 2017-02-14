@@ -18,7 +18,6 @@ module Data.MediaBus.Clock
     , at16kHzU64
     , type At48kHzU64
     , at48kHzU64
-    , getClockRate
     , deriveFrameTimestamp
     , IsClock(..)
     , timeSince
@@ -51,12 +50,11 @@ import           Data.Functor
 class HasDuration a where
     getDuration :: Integral b => a -> b
 
-class (KnownNat (GetClockRate t), SetClockRate t (GetClockRate t) ~ t) =>
+class (IsMonotone (Ticks t), Eq (Ticks t), Ord (Ticks t), Show (Ticks t)) =>
       IsTiming t where
-    type GetClockRate t :: Nat
-    type SetClockRate t (n :: Nat)
     data Ticks t
     nominalDiffTime :: Iso' (Ticks t) NominalDiffTime
+    getClockRate :: proxy t -> Integer
 
 class SetTimestamp t (GetTimestamp t) ~ t =>
       HasTimestamp t where
@@ -111,10 +109,8 @@ type At48kHzU64 = Timing 48000 Word64
 at48kHzU64 :: At48kHzU64
 at48kHzU64 = MkTiming
 
-instance (Integral w, KnownNat rate) =>
+instance (IsMonotone w, Show w, Integral w, KnownNat rate) =>
          IsTiming (Timing rate w) where
-    type GetClockRate (Timing rate w) = rate
-    type SetClockRate (Timing rate w) rate' = Timing rate' w
     newtype Ticks (Timing rate w) = MkTicks{_ticks :: w}
                               deriving (Eq, Real, Integral, Enum, IsMonotone, Num, Arbitrary,
                                         Default)
@@ -123,8 +119,9 @@ instance (Integral w, KnownNat rate) =>
         toNDT = (/ rate) . fromIntegral
         fromNDT = round . (* rate)
         rate = fromInteger $ natVal (Proxy :: Proxy rate)
+    getClockRate _ = fromIntegral $ natVal (Proxy :: Proxy rate)
 
-instance (KnownNat r, Integral w, Show w) =>
+instance (IsMonotone w, KnownNat r, Integral w, Show w) =>
          Show (Ticks (Timing r w)) where
     show tix@(MkTicks x) = "(" ++
         show (view nominalDiffTime tix) ++
@@ -137,12 +134,6 @@ instance (KnownNat r, Integral w, Show w) =>
 instance (Eq w, IsMonotone w) =>
          Ord (Ticks (Timing rate w)) where
     (<=) = flip succeeds
-
-getClockRate :: forall c proxy.
-             (KnownNat (GetClockRate c))
-             => proxy c
-             -> Integer
-getClockRate _ = natVal (Proxy :: Proxy (GetClockRate c))
 
 -- * Media Data Synchronization
 deriveFrameTimestamp :: (Monad m, Integral (Ticks t), HasDuration a, HasTimestamp a)
@@ -219,8 +210,8 @@ instance IsMonotone (TimeDiff UtcClock) where
         roundToSeconds :: TimeDiff UtcClock -> Word64
 
 overwriteTimeInSeries :: (HasTimestamp a, HasTimestamp b, GetTimestamp b ~ TimeDiff c, GetTimestamp a ~ TimeDiff c, Monad m, IsClock c, MonadClock c m, AsSeries ser a b)
-                   => proxy c
-                   -> Conduit ser m ser
+                      => proxy c
+                      -> Conduit ser m ser
 overwriteTimeInSeries _ = do
     tStart0 <- lift now
     evalStateC tStart0 (awaitForever wrapTime)

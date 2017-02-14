@@ -190,6 +190,7 @@ test-suite tests
                      -fno-warn-orphans
                      -fno-warn-unused-do-bind
                      -fno-warn-missing-signatures
+                     -fno-warn-type-defaults
                      -fprint-explicit-kinds
 
 source-repository head

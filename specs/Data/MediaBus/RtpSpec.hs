@@ -8,7 +8,9 @@ import           Data.MediaBus.Internal.Conduit
 import           Test.Hspec
 import qualified Data.MediaBus.Rtp.Packet       as Rtp
 import qualified Data.ByteString                as B
-import           Data.Word
+
+import Data.Proxy
+import GHC.TypeLits
 
 spec :: Spec
 spec = describe "rtpSource" $ do
@@ -148,3 +150,22 @@ _receiveRtpFromUDP ::  IO [RtpStream]
 _receiveRtpFromUDP = runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
     rtpSource .|
     dbgShowSink 0.001 "RTP")
+
+-- _receiveRtpFromUDPAndDecodeAndPlayback ::  IO [RtpStream]
+-- _receiveRtpFromUDPAndDecodeAndPlayback = runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
+--     rtpSource .| dbgShowC 0.01 "RTP"
+--     .| rtpPayloadDemux [(8, Proxy :: Proxy (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks (Timing 8000 Word32)) (SampleBuffer ALaw)))])
+
+
+-- TODO use the SourceId as a enriched stream config type, which contains the ssrc but also ptime, etc...
+
+-- rtpPayloadDemux
+--    :: Monad m => [(Word8, StreamConfig)] -> (forall t c. IsTiming t =>  Conduit (Stream SourceId' SeqNum' t (SampleBuffer c)) m out) -> Conduit RtpStream m out
+-- rtpPayloadDemux  payloadTable sink = undefined
+
+
+-- rtpPayloadMux
+--   :: (IsTiming t, Monad m) => [(Word8, StreamConfig)] ->
+
+-- type MyCfg = (    PayloadType 0  :=> Stream RtpSsrc RtpSeqNum (Ticks' 8000) (SampleBuffer ALaw)
+--              :<>: PayloadType 97 :=> Stream RtpSsrc RtpSeqNum (Ticks' 8000) (SampleBuffer ALaw))

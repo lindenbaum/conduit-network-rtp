@@ -13,7 +13,7 @@ spec = describe "Stream conduits" $
     describe "Functor instance: fmap" $
         it "should have the same result as 'overFrameContentC (...) f'" pending
 
--- fmap f = overFrameContentC undefined (mapInput _frameValue (const Nothing) (const f))
+-- fmap f = overFrameContentC undefined (mapInput _framePayload (const Nothing) (const f))
 _helloWorld :: IO ()
 _helloWorld = void $
     runConduit (yieldMany ("Hello world" :: String) .|
