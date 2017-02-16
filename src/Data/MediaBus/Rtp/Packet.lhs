@@ -4,7 +4,7 @@ TODO: Add RTCP support
 > module Data.MediaBus.Rtp.Packet
 >   ( RtpPacket(..), RtpHeader(..), HeaderExtension(..)
 >   , type RtpSeqNum, RtpSsrc(..), RtpTimestamp(..)
->   , RtpPayload(..), payloadType, payload
+>   , RtpPayload(..), rtpPayloadType, rtpPayload
 >   , deserialize, serialize)
 > where
 
@@ -88,8 +88,8 @@ following the fixed size RTP header:
 The payload contains the actual media data, i.e. the raw payload bytes together
 with an 8-bit 'payloadType'.
 
-> data RtpPayload = MkRtpPayload { _payloadType :: Word8
->                                , _payload     :: SampleBuffer Word8
+> data RtpPayload = MkRtpPayload { _rtpPayloadType :: Word8
+>                                , _rtpPayload     :: SampleBuffer Word8
 >                                }
 >    deriving (Eq)
 > makeLenses ''RtpPayload
@@ -420,13 +420,13 @@ Serialization is straight forward the opposite of deserialization.
 
 First write the header then the body.
 
->   putPayloadTypeAndHeader (_payloadType b) h
->   putByteString (byteStringFromSampleBuffer (_payload b))
+>   putPayloadTypeAndHeader (_rtpPayloadType b) h
+>   putByteString (byteStringFromSampleBuffer (_rtpPayload b))
 
 Calculate number of bytes required for padding.
 
 >   let paddingLen = fromIntegral
->         ((64 - ((sampleCount (_payload b)) `rem` 64)) `rem` 64)
+>         ((64 - ((sampleCount (_rtpPayload b)) `rem` 64)) `rem` 64)
 
 The 'Header' field 'hasPadding', which is an input to this function,
 is interpreted to indicate if padding is /allowed/.

@@ -6,6 +6,10 @@ module Data.MediaBus.Rtp
 import           Conduit
 import           Control.Lens
 import qualified Data.ByteString               as B
+import           Data.MediaBus.Audio.Alaw
+import           Data.MediaBus.Clock
+import           Data.MediaBus.Sample
+import           Data.MediaBus.Stream
 import           Data.MediaBus.Internal.Series
 import qualified Data.MediaBus.Rtp.Packet      as Rtp
 import           Data.MediaBus.Stream
@@ -13,6 +17,8 @@ import           Control.Monad
 import           Data.Default
 import           Text.Printf
 import           Debug.Trace
+import           Data.Word
+import           Data.Coerce
 
 type RtpStream = Stream Rtp.RtpSsrc Rtp.RtpSeqNum Rtp.RtpTimestamp Rtp.RtpPayload
 
@@ -89,6 +95,34 @@ rtpSource = foldStreamC $
 data RRSourceChange = SourceHasChanged | SourceHasNotChanged
     deriving (Eq)
 
-data RtpPayloadContext = MkRtpPayloadContext
-
 type RtpOutStream = Stream Rtp.RtpSsrc Rtp.RtpSeqNum Rtp.RtpTimestamp B.ByteString
+
+-- TODO use the SourceId as a enriched stream config type, which contains the ssrc but also ptime, etc...
+rtpPayloadDemux :: (IsTiming (Timing r w), Monad m)
+                =>
+                 Timing r w
+                -> [(Word8, PayloadHandler m (Ticks (Timing r w)) out)]
+                -> Conduit RtpStream m (Stream i s (Ticks (Timing r w)) out)
+rtpPayloadDemux timing payloadTable =
+    undefined
+
+data PayloadHandler m t c where
+  MkPayloadHandler :: Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum t c) -> PayloadHandler m t c
+
+
+
+alawPayloadHandler :: Monad m
+                   => Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks' 8000) (SampleBuffer ALaw))
+alawPayloadHandler = mapC ((timestamp %~ (mkTicks at8kHzU32 . Rtp._rtpTimestamp))
+                               . (payload %~ (coerce . Rtp._rtpPayload)))
+
+
+
+
+-- TODO: Add a DTX stream state, indicating a silence period. The packet rate may drop during silence! Silence might begin with the reception of the first comfort noise packet, e.g. with payload type 13, see https://tools.ietf.org/html/rfc3389 and https://tools.ietf.org/html/rfc3551#section-4.1
+
+-- TODO: split up the received data into equally sized chunks? - leave that to the application
+
+-- TODO: drop duplicate packets
+
+-- TODO: add parameters: channel layout, bit rate, ptime, maxptime

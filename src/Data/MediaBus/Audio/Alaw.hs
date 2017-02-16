@@ -26,10 +26,10 @@ instance HasDuration (Proxy ALaw) where
 instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel
 
-instance Transcoder ALaw S16 s t where
+instance Transcoder ALaw S16 where
     transcode = mapC (over framePayload (MkS16 . decodeAlawFrame . _alawSample))
 
-instance Transcoder S16 ALaw s t where
+instance Transcoder S16 ALaw where
     transcode = mapC (over framePayload (MkALaw . encodeAlawFrame . _s16Sample))
 
 decodeAlawFrame :: Word8 -> Int16

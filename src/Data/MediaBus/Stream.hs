@@ -1,5 +1,6 @@
 module Data.MediaBus.Stream
-    ( type SourceId'
+    ( HasPayload(..)
+    , type SourceId'
     , type SeqNum'
     , type Ticks'
     , type Timing'
@@ -45,23 +46,12 @@ import           Data.Kind
 import           Data.Default
 import           Text.Printf
 
--- data RawFrame i s t v = MkRawFrame { _rawFrameSourceId  :: i
---                                    , _rawFrameSeqNum    :: s
---                                    , _rawFrameTimestamp :: t
---                                    , _rawFrameValue     :: v
---                                    }
--- makeLenses ''RawFrame
--- instance (Show i, Show s, Show t, Show v) =>
---          Show (RawFrame i s t v) where
---     show (MkRawFrame i s t v) =
---         "RAW ** " ++
---             show i ++
---                 " ** " ++
---                     show s ++
---                         " ** " ++
---                             show t ++
---                                 " ** " ++
---                                     show v
+class (SetPayload a (GetPayload a) ~ a) =>
+      HasPayload a where
+    type GetPayload a
+    type SetPayload a b
+    payload :: Traversal a (SetPayload a b) (GetPayload a) b
+
 type SourceId' = SourceId Word32
 
 type SeqNum' = SeqNum Word16
@@ -114,6 +104,11 @@ type Frame' r v = Frame SeqNum' (Ticks' r) v
 
 makeLenses ''Frame
 
+instance HasPayload (Frame s t c) where
+    type GetPayload (Frame s t c) = c
+    type SetPayload (Frame s t c) d = Frame s t d
+    payload = framePayload
+
 instance HasTimestamp (Frame s t c) where
     type GetTimestamp (Frame s t c) = t
     type SetTimestamp (Frame s t c) t' = Frame s t' c
@@ -139,6 +134,26 @@ type Streamish i s t c = Series (FrameCtx i s t) (Frame s t c)
 
 type Stream' t c = Stream SourceId' SeqNum' (Ticks' t) c
 
+makeLenses ''Stream
+
+instance HasPayload (Stream i s t c) where
+    type GetPayload (Stream i s t c) = c
+    type SetPayload (Stream i s t c) d = Stream i s t d
+    payload = stream . _Next . payload
+
+instance HasDuration c =>
+         HasDuration (Stream i s t c) where
+    getDuration = maybe 0 getDuration . preview (stream . _Next)
+
+instance HasTimestamp (Stream i s t c) where
+    type GetTimestamp (Stream i s t c) = t
+    type SetTimestamp (Stream i s t c) t' = Stream i s t' c
+    timestamp = stream . timestamp
+
+instance (Show i, Show s, Show t, Show c) =>
+         Show (Stream i s t c) where
+    show (MkStream s) = show s
+
 yieldStreamish :: Monad m => Streamish i s t c -> Source m (Stream i s t c)
 yieldStreamish = yield . MkStream
 
@@ -151,23 +166,6 @@ mapStreamC :: Monad m
            => Conduit (Streamish i s t c) m (Streamish i' s' t' c')
            -> Conduit (Stream i s t c) m (Stream i' s' t' c')
 mapStreamC = mapInput _stream (Just . MkStream) . mapOutput MkStream
-
-makeLenses ''Stream
-
-instance HasTimestamp (Stream i s t c) where
-    type GetTimestamp (Stream i s t c) = t
-    type SetTimestamp (Stream i s t c) t' = Stream i s t' c
-    timestamp = stream . timestamp
-
-instance (Show i, Show s, Show t, Show c) =>
-         Show (Stream i s t c) where
-    show (MkStream s) = show s
-
-class Transcoder from to s t where
-    type TranscodingM from to (m :: Type -> Type) :: Constraint
-    type TranscodingM from to m = Monad m
-    transcode :: TranscodingM from to m
-              => Conduit (Frame s t from) m (Frame s t to)
 
 overStreamC :: Monad m
             => Conduit (Series (FrameCtx i s t) (Frame s t c)) m (Series (FrameCtx i' s' t') (Frame s' t' c'))
@@ -201,6 +199,12 @@ frameResamplerM fTicks fContent =
     doTicks = over stream
                    (over (_Start . frameCtxTimestampRef) fTicks .
                         over (_Next . frameTimestamp) fTicks)
+
+class Transcoder from to where
+    type TranscodingM from to (m :: Type -> Type) :: Constraint
+    type TranscodingM from to m = Monad m
+    transcode :: TranscodingM from to m
+              => Conduit (Frame s t from) m (Frame s t to)
 
 type StreamSink i s t c m r = Sink (Stream i s t c) m r
 
