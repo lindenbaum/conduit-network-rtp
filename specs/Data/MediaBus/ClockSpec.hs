@@ -4,6 +4,7 @@ import           Data.MediaBus
 import           Test.QuickCheck
 import           Test.Hspec
 import           Control.Lens
+import           Data.Word
 
 spec :: Spec
 spec = do
@@ -33,5 +34,5 @@ spec = do
                 \tix -> let t = mkTicks at8kHzU32 tix
                         in
                             view nominalDiffTime
-                                 (convertTicks t :: Ticks At16kHzU64) `shouldBe`
+                                 (convertTicks t :: Ticks 16000 Word64) `shouldBe`
                                 view nominalDiffTime t

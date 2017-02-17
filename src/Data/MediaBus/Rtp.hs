@@ -12,7 +12,6 @@ import           Data.MediaBus.Sample
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Internal.Series
 import qualified Data.MediaBus.Rtp.Packet      as Rtp
-import           Data.MediaBus.Stream
 import           Control.Monad
 import           Data.Default
 import           Text.Printf
@@ -98,22 +97,21 @@ data RRSourceChange = SourceHasChanged | SourceHasNotChanged
 type RtpOutStream = Stream Rtp.RtpSsrc Rtp.RtpSeqNum Rtp.RtpTimestamp B.ByteString
 
 -- TODO use the SourceId as a enriched stream config type, which contains the ssrc but also ptime, etc...
-rtpPayloadDemux :: (IsTiming (Timing r w), Monad m)
+rtpPayloadDemux :: (Monad m)
                 =>
-                 Timing r w
-                -> [(Word8, PayloadHandler m (Ticks (Timing r w)) out)]
-                -> Conduit RtpStream m (Stream i s (Ticks (Timing r w)) out)
+                 proxy rate
+                -> [(Word8, PayloadHandler m (Ticks r w) out)]
+                -> Conduit RtpStream m (Stream i s (Ticks r w) out)
 rtpPayloadDemux timing payloadTable =
     undefined
 
-data PayloadHandler m t c where
-  MkPayloadHandler :: Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum t c) -> PayloadHandler m t c
+type PayloadHandler m t c = Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum t c)
 
 
 
 alawPayloadHandler :: Monad m
                    => Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks' 8000) (SampleBuffer ALaw))
-alawPayloadHandler = mapC ((timestamp %~ (mkTicks at8kHzU32 . Rtp._rtpTimestamp))
+alawPayloadHandler = mapC ((timestamp %~ (MkTicks . Rtp._rtpTimestamp))
                                . (payload %~ (coerce . Rtp._rtpPayload)))
 
 

@@ -18,15 +18,16 @@ import           Data.Conduit
 import           Control.Monad.IO.Class
 import           Data.Proxy
 import           Text.Printf
+import           GHC.TypeLits
 
 class HasDebugPlaybackSink s t c where
-    debugPlaybackSink :: MonadIO m => Sink (Frame s (Ticks t) c) m ()
+    debugPlaybackSink :: MonadIO m => Sink (Frame s t c) m ()
 
-instance IsTiming t =>
-         HasDebugPlaybackSink s t (SampleBuffer S16) where
+instance KnownNat r =>
+         HasDebugPlaybackSink s (Ticks r w) (SampleBuffer S16) where
     debugPlaybackSink = do
         let cp = shell (printf "play -r %d -b 16 -c1  -e signed-integer -t raw -"
-                               (getClockRate (Proxy :: Proxy t)))
+                               (natVal (Proxy :: Proxy r)))
         (!(sinH :: Handle), Inherited, Inherited, cph) <- streamingProcess cp
         awaitForever (pcmToByteString sinH)
         liftIO (hClose sinH)
@@ -37,6 +38,6 @@ instance IsTiming t =>
             liftIO (B.hPut h (byteStringFromSampleBuffer d))
 
 streamDebugPlaybackSink :: (HasDebugPlaybackSink s t c, MonadIO m)
-                        => Sink (Stream i s (Ticks t) c) m ()
+                        => Sink (Stream i s t c) m ()
 streamDebugPlaybackSink =
     foldStreamC $ \(MkStartingFrom _) -> debugPlaybackSink

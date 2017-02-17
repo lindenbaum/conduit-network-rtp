@@ -1,5 +1,6 @@
 module Data.MediaBus.Sequence
     ( SeqNum(..)
+    , HasSeqNumT(..)
     , HasSeqNum(..)
     , fromSeqNum
     , reorder
@@ -22,15 +23,21 @@ import           Data.Default
 import           Text.Printf
 
 class SetSeqNum t (GetSeqNum t) ~ t =>
-      HasSeqNum t where
+      HasSeqNumT t where
     type GetSeqNum t
     type SetSeqNum t s
+
+class HasSeqNumT t =>
+      HasSeqNum t where
     seqNum :: Lens t (SetSeqNum t s) (GetSeqNum t) s
+
+instance (HasSeqNumT a, HasSeqNumT b, GetSeqNum a ~ GetSeqNum b) =>
+         HasSeqNumT (Series a b) where
+    type GetSeqNum (Series a b) = GetSeqNum a
+    type SetSeqNum (Series a b) t = Series (SetSeqNum a t) (SetSeqNum b t)
 
 instance (HasSeqNum a, HasSeqNum b, GetSeqNum a ~ GetSeqNum b) =>
          HasSeqNum (Series a b) where
-    type GetSeqNum (Series a b) = GetSeqNum a
-    type SetSeqNum (Series a b) t = Series (SetSeqNum a t) (SetSeqNum b t)
     seqNum f (Start a) = Start <$> seqNum f a
     seqNum f (Next b) = Next <$> seqNum f b
 
@@ -39,9 +46,11 @@ newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
 
 makeLenses ''SeqNum
 
-instance HasSeqNum (SeqNum s) where
+instance HasSeqNumT (SeqNum s) where
     type GetSeqNum (SeqNum s) = s
     type SetSeqNum (SeqNum s) s' = SeqNum s'
+
+instance HasSeqNum (SeqNum s) where
     seqNum = fromSeqNum
 
 instance Show s =>

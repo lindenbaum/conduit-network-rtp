@@ -1,23 +1,16 @@
 module Data.MediaBus.Clock
     ( HasDuration(..)
-    , IsTiming(..)
+    , HasTimestampT(..)
     , HasTimestamp(..)
     , Ticks(..)
-    , Timing(..)
     , mkTicks
-    , convertTicks
-    , type At8kHzU32
     , at8kHzU32
-    , type At16kHzU32
     , at16kHzU32
-    , type At48kHzU32
     , at48kHzU32
-    , type At8kHzU64
-    , at8kHzU64
-    , type At16kHzU64
     , at16kHzU64
-    , type At48kHzU64
     , at48kHzU64
+    , nominalDiffTime
+    , convertTicks
     , deriveFrameTimestamp
     , IsClock(..)
     , timeSince
@@ -45,100 +38,89 @@ import           GHC.TypeLits
 import           Test.QuickCheck
 import           Data.Functor
 
--- | Types with an integral duration, i.e. a duration that corresponds to an
--- integral number of sub-units (e.g. audio samples).
-class HasDuration a where
-    getDuration :: Integral b => a -> b
+newtype Ticks rate w = MkTicks { _ticks :: w }
+    deriving (Eq, Real, Integral, Enum, IsMonotone, Num, Arbitrary, Default)
 
-class (IsMonotone (Ticks t), Eq (Ticks t), Ord (Ticks t), Show (Ticks t)) =>
-      IsTiming t where
-    data Ticks t
-    nominalDiffTime :: Iso' (Ticks t) NominalDiffTime
-    getClockRate :: proxy t -> Integer
-
-class SetTimestamp t (GetTimestamp t) ~ t =>
-      HasTimestamp t where
-    type GetTimestamp t
-    type SetTimestamp t s
-    timestamp :: Lens t (SetTimestamp t s) (GetTimestamp t) s
-    timestamp' :: Lens' t (GetTimestamp t)
-    timestamp' = timestamp
-
-instance (HasTimestamp a, HasTimestamp b, GetTimestamp a ~ GetTimestamp b) =>
-         HasTimestamp (Series a b) where
-    type GetTimestamp (Series a b) = GetTimestamp a
-    type SetTimestamp (Series a b) t = Series (SetTimestamp a t) (SetTimestamp b t)
-    timestamp f (Start a) = Start <$> timestamp f a
-    timestamp f (Next b) = Next <$> timestamp f b
-
-data Timing (rate :: Nat) (w :: Type) = MkTiming
-
-mkTicks :: Timing r w -> w -> Ticks (Timing r w)
+mkTicks :: forall proxy rate baseType.
+        proxy '(rate, baseType)
+        -> baseType
+        -> Ticks rate baseType
 mkTicks _ = MkTicks
 
-convertTicks :: (IsTiming t, IsTiming t') => Ticks t -> Ticks t'
+at8kHzU32 :: Proxy '(8000, Word32)
+at8kHzU32 = Proxy
+
+at16kHzU32 :: Proxy '(16000, Word32)
+at16kHzU32 = Proxy
+
+at48kHzU32 :: Proxy '(48000, Word32)
+at48kHzU32 = Proxy
+
+at16kHzU64 :: Proxy '(16000, Word64)
+at16kHzU64 = Proxy
+
+at48kHzU64 :: Proxy '(48000, Word64)
+at48kHzU64 = Proxy
+
+convertTicks :: (Integral w, Integral w', KnownNat r, KnownNat r')
+             => Ticks r w
+             -> Ticks r' w'
 convertTicks = view (from nominalDiffTime) . view nominalDiffTime
 
-type At8kHzU32 = Timing 8000 Word32
+nominalDiffTime :: forall r w.
+                (Integral w, KnownNat r)
+                => Iso' (Ticks r w) NominalDiffTime
+nominalDiffTime = iso (toNDT . _ticks) (MkTicks . fromNDT)
+  where
+    toNDT = (/ rate) . fromIntegral
+    fromNDT = round . (* rate)
+    rate = fromInteger $ natVal (Proxy :: Proxy r)
 
-at8kHzU32 :: At8kHzU32
-at8kHzU32 = MkTiming
-
-type At16kHzU32 = Timing 16000 Word32
-
-at16kHzU32 :: At16kHzU32
-at16kHzU32 = MkTiming
-
-type At48kHzU32 = Timing 48000 Word32
-
-at48kHzU32 :: At48kHzU32
-at48kHzU32 = MkTiming
-
-type At8kHzU64 = Timing 8000 Word64
-
-at8kHzU64 :: At8kHzU64
-at8kHzU64 = MkTiming
-
-type At16kHzU64 = Timing 16000 Word64
-
-at16kHzU64 :: At16kHzU64
-at16kHzU64 = MkTiming
-
-type At48kHzU64 = Timing 48000 Word64
-
-at48kHzU64 :: At48kHzU64
-at48kHzU64 = MkTiming
-
-instance (IsMonotone w, Show w, Integral w, KnownNat rate) =>
-         IsTiming (Timing rate w) where
-    newtype Ticks (Timing rate w) = MkTicks{_ticks :: w}
-                              deriving (Eq, Real, Integral, Enum, IsMonotone, Num, Arbitrary,
-                                        Default)
-    nominalDiffTime = iso (toNDT . _ticks) (MkTicks . fromNDT)
-      where
-        toNDT = (/ rate) . fromIntegral
-        fromNDT = round . (* rate)
-        rate = fromInteger $ natVal (Proxy :: Proxy rate)
-    getClockRate _ = fromIntegral $ natVal (Proxy :: Proxy rate)
-
-instance (IsMonotone w, KnownNat r, Integral w, Show w) =>
-         Show (Ticks (Timing r w)) where
+instance (KnownNat r, Integral w, Show w) =>
+         Show (Ticks r w) where
     show tix@(MkTicks x) = "(" ++
         show (view nominalDiffTime tix) ++
             ", " ++
                 show x ++
                     "@" ++
-                        show (getClockRate tix) ++
+                        show (natVal (Proxy :: Proxy r)) ++
                             "Hz)"
 
 instance (Eq w, IsMonotone w) =>
-         Ord (Ticks (Timing rate w)) where
+         Ord (Ticks rate w) where
     (<=) = flip succeeds
 
+-- | Types with an integral duration, i.e. a duration that corresponds to an
+-- integral number of sub-units (e.g. audio samples).
+class HasDuration a where
+    getDuration :: Integral b => a -> b
+
+-- TODO rename *Timestamp to *Tick
+class SetTimestamp t (GetTimestamp t) ~ t =>
+      HasTimestampT t where
+    type GetTimestamp t
+    type SetTimestamp t s
+
+class HasTimestampT t =>
+      HasTimestamp t where
+    timestamp :: Lens t (SetTimestamp t s) (GetTimestamp t) s
+    timestamp' :: Lens' t (GetTimestamp t)
+    timestamp' = timestamp
+
+instance (HasTimestampT a, HasTimestampT b, GetTimestamp a ~ GetTimestamp b) =>
+         HasTimestampT (Series a b) where
+    type GetTimestamp (Series a b) = GetTimestamp a
+    type SetTimestamp (Series a b) t = Series (SetTimestamp a t) (SetTimestamp b t)
+
+instance (HasTimestamp a, HasTimestamp b, GetTimestamp a ~ GetTimestamp b) =>
+         HasTimestamp (Series a b) where
+    timestamp f (Start a) = Start <$> timestamp f a
+    timestamp f (Next b) = Next <$> timestamp f b
+
 -- * Media Data Synchronization
-deriveFrameTimestamp :: (Monad m, Integral (Ticks t), HasDuration a, HasTimestamp a)
-                     => Ticks t
-                     -> Conduit a m (SetTimestamp a (Ticks t))
+deriveFrameTimestamp :: (Monad m, Integral (Ticks r t), HasDuration a, HasTimestamp a)
+                     => Ticks r t
+                     -> Conduit a m (SetTimestamp a (Ticks r t))
 deriveFrameTimestamp t0 =
     evalStateC t0 (awaitForever yieldSync)
   where

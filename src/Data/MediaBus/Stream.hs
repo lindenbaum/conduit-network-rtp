@@ -3,7 +3,6 @@ module Data.MediaBus.Stream
     , type SourceId'
     , type SeqNum'
     , type Ticks'
-    , type Timing'
     , FrameCtx(..)
     , type FrameCtx'
     , frameCtxSourceId
@@ -36,6 +35,7 @@ import           Control.Monad
 import           Control.Lens
 import           Data.MediaBus.SourceId
 import           Data.MediaBus.Sequence
+import           Data.MediaBus.Payload
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Internal.Series
 import           Control.Monad.Writer.Strict   ( tell )
@@ -46,19 +46,11 @@ import           Data.Kind
 import           Data.Default
 import           Text.Printf
 
-class (SetPayload a (GetPayload a) ~ a) =>
-      HasPayload a where
-    type GetPayload a
-    type SetPayload a b
-    payload :: Traversal a (SetPayload a b) (GetPayload a) b
-
 type SourceId' = SourceId Word32
 
 type SeqNum' = SeqNum Word16
 
-type Timing' r = Timing r Word32
-
-type Ticks' r = Ticks (Timing' r)
+type Ticks' r = Ticks r Word32
 
 data FrameCtx i s t = MkFrameCtx { _frameCtxSourceId     :: i
                                  , _frameCtxTimestampRef :: t
@@ -70,10 +62,19 @@ type FrameCtx' r = FrameCtx SourceId' SeqNum' (Ticks' r)
 
 makeLenses ''FrameCtx
 
-instance HasTimestamp (FrameCtx i s t) where
+instance HasTimestampT (FrameCtx i s t) where
     type GetTimestamp (FrameCtx i s t) = t
     type SetTimestamp (FrameCtx i s t) t' = (FrameCtx i s t')
+
+instance HasTimestamp (FrameCtx i s t) where
     timestamp = frameCtxTimestampRef
+
+instance HasSeqNumT (FrameCtx i s t) where
+    type GetSeqNum (FrameCtx i s t) = s
+    type SetSeqNum (FrameCtx i s t) x = FrameCtx i x t
+
+instance HasSeqNum (FrameCtx i s t) where
+    seqNum = frameCtxSeqNumRef
 
 instance (Arbitrary i, Arbitrary s, Arbitrary t) =>
          Arbitrary (FrameCtx i s t) where
@@ -109,10 +110,19 @@ instance HasPayload (Frame s t c) where
     type SetPayload (Frame s t c) d = Frame s t d
     payload = framePayload
 
-instance HasTimestamp (Frame s t c) where
+instance HasTimestampT (Frame s t c) where
     type GetTimestamp (Frame s t c) = t
     type SetTimestamp (Frame s t c) t' = Frame s t' c
+
+instance HasTimestamp (Frame s t c) where
     timestamp = frameTimestamp
+
+instance HasSeqNumT (Frame s t c) where
+    type GetSeqNum (Frame s t c) = s
+    type SetSeqNum (Frame s t c) x = Frame x t c
+
+instance HasSeqNum (Frame s t c) where
+    seqNum = frameSeqNum
 
 instance HasDuration c =>
          HasDuration (Frame s t c) where
@@ -145,9 +155,18 @@ instance HasDuration c =>
          HasDuration (Stream i s t c) where
     getDuration = maybe 0 getDuration . preview (stream . _Next)
 
-instance HasTimestamp (Stream i s t c) where
+instance HasSeqNumT (Stream i s t c) where
+    type GetSeqNum (Stream i s t c) = s
+    type SetSeqNum (Stream i s t c) x = Stream i x t c
+
+instance HasSeqNum (Stream i s t c) where
+    seqNum = stream . seqNum
+
+instance HasTimestampT (Stream i s t c) where
     type GetTimestamp (Stream i s t c) = t
     type SetTimestamp (Stream i s t c) t' = Stream i s t' c
+
+instance HasTimestamp (Stream i s t c) where
     timestamp = stream . timestamp
 
 instance (Show i, Show s, Show t, Show c) =>
