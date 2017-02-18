@@ -1,6 +1,9 @@
 module Data.MediaBus.Rtp
     ( type RtpStream
     , rtpSource
+    , rtpPayloadDemux
+    , type RtpPayloadHandler
+    , alawPayloadHandler
     ) where
 
 import           Conduit
@@ -16,14 +19,16 @@ import           Control.Monad
 import           Data.Default
 import           Text.Printf
 import           Debug.Trace
-import           Data.Word
 import           Data.Coerce
+import qualified Data.List
+import           Data.Maybe
 
 type RtpStream = Stream Rtp.RtpSsrc Rtp.RtpSeqNum Rtp.RtpTimestamp Rtp.RtpPayload
 
 data RRState ctx = MkRRState { _currCtx       :: ctx
                              , _isFirstPacket :: Bool
                              }
+    deriving (Show)
 
 makeLenses ''RRState
 
@@ -40,7 +45,7 @@ rtpSource = foldStreamC $
                 let rtpHeader = Rtp.header rtpPacket
                 wasFirst <- use isFirstPacket
                 (oldCtx, res) <- updateState rtpHeader
-                when (res == SourceHasChanged)
+                when (res == FrameCtxChanged)
                      (traceSourceChangeM wasFirst oldCtx >> yieldStreamStart)
                 yieldStreamNext (Rtp.body rtpPacket)
 
@@ -59,30 +64,29 @@ rtpSource = foldStreamC $
     updateState rtpHeader = do
         oldCtx <- currCtx <<%=
                       ((frameCtxSeqNumRef .~ Rtp.sequenceNumber rtpHeader)
-                           . (frameCtxTimestampRef .~
-                                  Rtp.timestamp rtpHeader))
+                           . (frameCtxTimestampRef .~ Rtp.timestamp rtpHeader))
         wasFirstPacket <- isFirstPacket <<.= False
         if oldCtx ^. frameCtxSourceId /= Rtp.ssrc rtpHeader
             then do
                 currCtx . frameCtxSourceId .= Rtp.ssrc rtpHeader
-                return (oldCtx, SourceHasChanged)
+                return (oldCtx, FrameCtxChanged)
             else if sequenceNumbersDifferTooMuch (oldCtx ^. frameCtxSeqNumRef)
                                                  (Rtp.sequenceNumber rtpHeader) ||
                      timestampsDifferTooMuch (oldCtx ^. frameCtxTimestampRef)
                                              (Rtp.timestamp rtpHeader) ||
                      wasFirstPacket
-                 then return (oldCtx, SourceHasChanged)
-                 else return (oldCtx, SourceHasNotChanged)
+                 then return (oldCtx, FrameCtxChanged)
+                 else return (oldCtx, FrameCtxNotChanged)
       where
         sequenceNumbersDifferTooMuch oldSN currSN =
-            let d = if currSN >= oldSN then currSN - oldSN else oldSN - currSN
+            let d = if currSN >= oldSN then currSN - oldSN else oldSN - currSN -- TODO use LocalOrd??
                 sequenceNumberMaxDelta =
                     10
             in
                 d >= sequenceNumberMaxDelta
         timestampsDifferTooMuch oldTS currTS =
             let d = if currTS >= oldTS then currTS - oldTS else oldTS - currTS
-                timestampMaxDelta = 2000
+                timestampMaxDelta = 2000 -- TODO extract
             in
                 d >= timestampMaxDelta
     yieldStreamStart = use currCtx >>= yield . MkStream . Start
@@ -91,31 +95,34 @@ rtpSource = foldStreamC $
         sn <- use (currCtx . frameCtxSeqNumRef)
         yield (MkStream (Next (MkFrame ts sn p)))
 
-data RRSourceChange = SourceHasChanged | SourceHasNotChanged
+data RRSourceChange = FrameCtxChanged | FrameCtxNotChanged
     deriving (Eq)
 
 type RtpOutStream = Stream Rtp.RtpSsrc Rtp.RtpSeqNum Rtp.RtpTimestamp B.ByteString
 
--- TODO use the SourceId as a enriched stream config type, which contains the ssrc but also ptime, etc...
-rtpPayloadDemux :: (Monad m)
-                =>
-                 proxy rate
-                -> [(Word8, PayloadHandler m (Ticks r w) out)]
-                -> Conduit RtpStream m (Stream i s (Ticks r w) out)
-rtpPayloadDemux timing payloadTable =
-    undefined
+rtpPayloadDemux :: (Integral t, Monad m)
+                => [(Rtp.RtpPayloadType, RtpPayloadHandler m (Ticks r t) c)]
+                -> c
+                -> Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks r t) c)
+rtpPayloadDemux payloadTable fallbackContent =
+    mapC (timestamp %~ (MkTicks . fromIntegral . Rtp._rtpTimestamp)) .|
+        overFramesC go
+  where
+    setFallbackContent = return . (payload .~ fallbackContent)
+    go _start = awaitForever handleFrame
+      where
+        handleFrame frm = let pt = frm ^. framePayload . Rtp.rtpPayloadType
+                              mHandler = Data.List.lookup pt payloadTable
+                          in
+                              lift (fromMaybe setFallbackContent mHandler frm) >>=
+                                  yield
 
-type PayloadHandler m t c = Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum t c)
-
-
+type RtpPayloadHandler m t c = Frame Rtp.RtpSeqNum t Rtp.RtpPayload
+    -> m (Frame Rtp.RtpSeqNum t c)
 
 alawPayloadHandler :: Monad m
-                   => Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks' 8000) (SampleBuffer ALaw))
-alawPayloadHandler = mapC ((timestamp %~ (MkTicks . Rtp._rtpTimestamp))
-                               . (payload %~ (coerce . Rtp._rtpPayload)))
-
-
-
+                   => RtpPayloadHandler m t (SampleBuffer ALaw)
+alawPayloadHandler = return . (payload %~ (coerce . Rtp._rtpPayload))
 
 -- TODO: Add a DTX stream state, indicating a silence period. The packet rate may drop during silence! Silence might begin with the reception of the first comfort noise packet, e.g. with payload type 13, see https://tools.ietf.org/html/rfc3389 and https://tools.ietf.org/html/rfc3551#section-4.1
 

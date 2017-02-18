@@ -42,7 +42,7 @@ instance (HasSeqNum a, HasSeqNum b, GetSeqNum a ~ GetSeqNum b) =>
     seqNum f (Next b) = Next <$> seqNum f b
 
 newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
-    deriving (Num, Eq, Bounded, Enum, IsMonotone, Arbitrary, Default)
+    deriving (Num, Eq, Bounded, Enum, LocalOrd, Arbitrary, Default)
 
 makeLenses ''SeqNum
 
@@ -57,18 +57,18 @@ instance Show s =>
          Show (SeqNum s) where
     show (MkSeqNum s) = printf "SEQNUM: %10s" (show s)
 
-instance (Eq a, IsMonotone a) =>
+instance (Eq a, LocalOrd a) =>
          Ord (SeqNum a) where
     compare x y
         | x == y = EQ
         | x `succeeds` y = GT
         | otherwise = LT
 
-deriving instance (Real a, Num a, Eq a, IsMonotone a) => Real
+deriving instance (Real a, Num a, Eq a, LocalOrd a) => Real
          (SeqNum a)
 
 deriving instance
-         (Integral a, Enum a, Real a, Eq a, IsMonotone a) => Integral
+         (Integral a, Enum a, Real a, Eq a, LocalOrd a) => Integral
          (SeqNum a)
 
 synchronizeToSeqNum :: (HasSeqNum a, Monad m, Integral i)

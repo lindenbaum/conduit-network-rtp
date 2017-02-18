@@ -4,6 +4,7 @@ TODO: Add RTCP support
 > module Data.MediaBus.Rtp.Packet
 >   ( RtpPacket(..), RtpHeader(..), HeaderExtension(..)
 >   , type RtpSeqNum, RtpSsrc(..), RtpTimestamp(..)
+>   , RtpPayloadType(..), rtpPayloadTypeValue
 >   , RtpPayload(..), rtpPayloadType, rtpPayload
 >   , deserialize, serialize)
 > where
@@ -22,9 +23,8 @@ TODO: Add RTCP support
 > import Control.Lens
 > import Data.MediaBus.Sample
 
-The relevant output will be contained in the 'Packet' and 'Header' data types.
-The Functor style of 'Packet' allows to keep the RTP header info around, while
-converting and analysing the packet.
+The relevant output will be contained in the 'RtpPacket' and 'RtpHeader' data
+types.
 
 > data RtpPacket =
 >   MkRtpPacket { header :: !RtpHeader
@@ -85,13 +85,21 @@ following the fixed size RTP header:
 >                     , headerExtensionBody  :: ![Word32] }
 >   deriving (Read,Eq,Show)
 
-The payload contains the actual media data, i.e. the raw payload bytes together
-with an 8-bit 'payloadType'.
+A payload type is basically just a 'Word8':
 
-> data RtpPayload = MkRtpPayload { _rtpPayloadType :: Word8
+> newtype RtpPayloadType = MkRtpPayloadType { _rtpPayloadTypeValue :: Word8 }
+>   deriving (Eq, Num, Bits, Default)
+> instance Show RtpPayloadType where
+>   show (MkRtpPayloadType w) = printf "pt:%3d" w
+
+The payload contains the actual media data, i.e. the raw payload bytes together
+with the 'RtpPayloadType'.
+
+> data RtpPayload = MkRtpPayload { _rtpPayloadType :: RtpPayloadType
 >                                , _rtpPayload     :: SampleBuffer Word8
 >                                }
 >    deriving (Eq)
+> makeLenses ''RtpPayloadType
 > makeLenses ''RtpPayload
 
 Deserialize a complete RTP datagram:
@@ -136,7 +144,7 @@ Ok now to adjust for padding:
 
 This function will parse an 'RtpHeader':
 
-> getPayloadTypeAndHeader :: Get (Word8, RtpHeader)
+> getPayloadTypeAndHeader :: Get (RtpPayloadType, RtpHeader)
 > getPayloadTypeAndHeader = do
 
 The values are in network byte order, i.e. big-endian.
@@ -408,7 +416,7 @@ Here are the type class instances:
 
 > instance Show RtpPayload where
 >   show (MkRtpPayload pt bd) =
->     printf "(PAYLOAD: type:%d, content:%s)" pt (show bd)
+>     printf "%s/%s" (show pt) (show bd)
 
 Serialization is straight forward the opposite of deserialization.
 
@@ -443,7 +451,7 @@ number of bytes in that list.
 
 Writing out the header:
 
-> putPayloadTypeAndHeader :: Word8 -> RtpHeader -> Put
+> putPayloadTypeAndHeader :: RtpPayloadType -> RtpHeader -> Put
 > putPayloadTypeAndHeader payloadType' MkRtpHeader{..} = do
 
 To repeat the RTP header structure:
@@ -485,7 +493,7 @@ The second byte contains the marker and the payload type:
 
 >   putWord8
 >     (setBitTo 7 hasMarker
->      (payloadType' .&. 0x7f))
+>      ((payloadType' ^. rtpPayloadTypeValue) .&. 0x7f))
 
 The sequence number and timestamp:
 

@@ -9,6 +9,7 @@ module Data.MediaBus.Audio.Channels
 import           Control.Lens
 import           Foreign.Storable
 import           Data.MediaBus.Clock
+import           Test.QuickCheck
 import           Data.Proxy
 
 data ChannelLayout = SingleChannel | ChannelPair
@@ -21,6 +22,10 @@ data ChannelPair a = MkChannelPair { _leftSample  :: a
                                    , _rightSample :: a
                                    }
     deriving (Show, Eq, Ord)
+
+instance Arbitrary a =>
+         Arbitrary (ChannelPair a) where
+    arbitrary = MkChannelPair <$> arbitrary <*> arbitrary
 
 makeLenses ''ChannelPair
 

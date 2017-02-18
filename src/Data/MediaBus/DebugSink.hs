@@ -5,7 +5,6 @@ module Data.MediaBus.DebugSink
 
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Sample
-import           Data.MediaBus.Clock
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Internal.Series
 import           System.IO                     ( Handle, hClose )
@@ -24,7 +23,7 @@ class HasDebugPlaybackSink s t c where
     debugPlaybackSink :: MonadIO m => Sink (Frame s t c) m ()
 
 instance KnownNat r =>
-         HasDebugPlaybackSink s (Ticks r w) (SampleBuffer S16) where
+         HasDebugPlaybackSink s t (SampleBuffer (S16 r)) where
     debugPlaybackSink = do
         let cp = shell (printf "play -r %d -b 16 -c1  -e signed-integer -t raw -"
                                (natVal (Proxy :: Proxy r)))

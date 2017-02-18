@@ -8,49 +8,69 @@ import           Data.MediaBus.Stream
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Channels
 import           Data.MediaBus.Clock
+import           Data.MediaBus.Sample
 import           Data.Bits
 import           Data.Word
 import           Data.Int
 import           Control.Lens
 import           Data.Proxy
 import           Conduit
+import           Data.Function                ( on )
+import           Test.QuickCheck              ( Arbitrary(..) )
 
 newtype ALaw = MkALaw { _alawSample :: Word8 }
-    deriving (Show, Storable, Num, Eq, Bits)
+    deriving (Show, Storable, Num, Eq, Bits, Arbitrary)
 
 makeLenses ''ALaw
 
+instance Ord ALaw where
+    compare = compare `on` (decodeALawSample . _alawSample)
+
 instance HasDuration (Proxy ALaw) where
-    getDuration _ = 1
+    getDuration _ = 1 / 8000
 
 instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel
 
-instance Transcoder ALaw S16 where
-    transcode = mapC (over framePayload (MkS16 . decodeAlawFrame . _alawSample))
+instance Transcoder (SampleBuffer ALaw) (SampleBuffer (S16 8000)) where
+    transcode = mapC (over (framePayload . eachSample)
+                           (MkS16 . decodeALawSample . _alawSample))
 
-instance Transcoder S16 ALaw where
-    transcode = mapC (over framePayload (MkALaw . encodeAlawFrame . _s16Sample))
+instance Transcoder (SampleBuffer (S16 8000)) (SampleBuffer ALaw) where
+    transcode = mapC (over (framePayload . eachSample)
+                           (MkALaw . encodeALawSample . _s16Sample))
 
-decodeAlawFrame :: Word8 -> Int16
-decodeAlawFrame !a' = let !a = a' `xor` 85
-                          !quant_mask = 15
-                          !quant_shift = 4
-                          !seg_mask = 112
-                          !seg_shift = 4
-                          tBase, tAbs, seg :: Int16
-                          !seg = (fromIntegral a .&. seg_mask) `shiftR`
-                              seg_shift
-                          !tBase = (fromIntegral a .&. quant_mask) `shiftL`
-                              quant_shift
-                          !tAbs = case seg of
-                              0 -> tBase + 8
-                              1 -> tBase + 264
-                              _ -> (tBase + 264) `shiftL`
-                                  fromIntegral (seg - 1)
-                          !isPos = testBit a 7
-                      in
-                          if isPos then tAbs else tAbs * (-1)
+instance IsAudioSample ALaw where
+    type GetAudioSampleRate ALaw = 8000
+    type SetAudioSampleRate ALaw x = ALaw
+    avgSamples x y = MkALaw .
+        encodeALawSample .
+            _s16Sample $
+        (avgSamples `on` (mkS16 . decodeALawSample . _alawSample)) x y
+      where
+        mkS16 :: Int16 -> S16 8000
+        mkS16 = MkS16
+    setAudioSampleRate _ = id
+
+decodeALawSample :: Word8 -> Int16
+decodeALawSample !a' = let !a = a' `xor` 85
+                           !quant_mask = 15
+                           !quant_shift = 4
+                           !seg_mask = 112
+                           !seg_shift = 4
+                           tBase, tAbs, seg :: Int16
+                           !seg = (fromIntegral a .&. seg_mask) `shiftR`
+                               seg_shift
+                           !tBase = (fromIntegral a .&. quant_mask) `shiftL`
+                               quant_shift
+                           !tAbs = case seg of
+                               0 -> tBase + 8
+                               1 -> tBase + 264
+                               _ -> (tBase + 264) `shiftL`
+                                   fromIntegral (seg - 1)
+                           !isPos = testBit a 7
+                       in
+                           if isPos then tAbs else tAbs * (-1)
 
 -- | See http://opensource.apple.com//source/tcl/tcl-20/tcl_ext/snack/snack/generic/g711.c
 --
@@ -67,8 +87,8 @@ decodeAlawFrame !a' = let !a = a' `xor` 85
 --
 -- For further information see John C. Bellamy's Digital Telephony, 1982, John
 -- Wiley & Sons, pps 98-111 and 472-476.
-encodeAlawFrame :: Int16 -> Word8
-encodeAlawFrame !pcmVal' =
+encodeALawSample :: Int16 -> Word8
+encodeALawSample !pcmVal' =
     let !pcmVal = pcmVal' `shiftR` 3 -- to 13 bit
         (!mask, !pcmValAbs) = if pcmVal >= 0
                               then ( 0xD5 -- sign (7th) bit = 1

@@ -8,12 +8,15 @@ import           Data.MediaBus.Internal.Conduit
 import           Test.Hspec
 import qualified Data.MediaBus.Rtp.Packet       as Rtp
 import qualified Data.ByteString                as B
-
-import Data.Proxy
-import GHC.TypeLits
+import           Data.Proxy
+import           GHC.TypeLits
+import           Data.Word
 
 spec :: Spec
-spec = describe "rtpSource" $ do
+spec = rtpSourceSpec >> rtpPayloadDemuxSpec
+
+rtpSourceSpec :: Spec
+rtpSourceSpec = describe "rtpSource" $ do
     let countStarts :: [Series a b] -> Int
         countStarts = foldr (\x n -> case x of
                                  Start _ -> n + 1
@@ -122,8 +125,12 @@ spec = describe "rtpSource" $ do
             length (runTestConduit inputs) `shouldBe`
                 8
 
+rtpPayloadDemuxSpec :: Spec
+rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
+    it "converts the sequence" pending
+
 mkBrokenTestRtpPacket :: Stream Int Int Int B.ByteString
-mkBrokenTestRtpPacket = MkStream (Next (MkFrame 0 0 (B.pack [0,0,0])))
+mkBrokenTestRtpPacket = MkStream (Next (MkFrame 0 0 (B.pack [ 0, 0, 0 ])))
 
 mkTestRtpPacket :: Rtp.RtpSsrc
                 -> Rtp.RtpSeqNum
@@ -146,12 +153,13 @@ mkTestRtpPacket ssrc sn ts =
                                                                                                     , 0
                                                                                                     ]))))))
 
-_receiveRtpFromUDP ::  IO [RtpStream]
-_receiveRtpFromUDP = runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
-    rtpSource .|
-    dbgShowSink 0.001 "RTP")
-
--- _receiveRtpFromUDPAndDecodeAndPlayback ::  IO [RtpStream]
--- _receiveRtpFromUDPAndDecodeAndPlayback = runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
---     rtpSource .| dbgShowC 0.01 "RTP"
---     .| rtpPayloadDemux [(8, Proxy :: Proxy (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks (Timing 8000 Word32)) (SampleBuffer ALaw)))])
+_receiveRtpFromUDP :: IO [(Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks 8000 Word32) (SampleBuffer ALaw))]
+_receiveRtpFromUDP = runConduitRes (udpDatagramSource useUtcClock
+                                                      10000
+                                                      "127.0.0.1" .|
+                                        rtpSource .|
+                                        rtpPayloadDemux [(Rtp.MkRtpPayloadType 8, alawPayloadHandler)] mempty .|
+                                        dbgShowSink 1 "RTP")-- _receiveRtpFromUDPAndDecodeAndPlayback ::  IO [RtpStream]
+                                                              -- _receiveRtpFromUDPAndDecodeAndPlayback = runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
+                                                              --     rtpSource .| dbgShowC 0.01 "RTP"
+                                                              --     .| rtpPayloadDemux [(8, Proxy :: Proxy (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks (Timing 8000 Word32)) (SampleBuffer ALaw)))])

@@ -18,11 +18,10 @@ module Data.MediaBus.Stream
     , stream
     , yieldStreamish
     , foldStreamC
-    , mapStreamC
     , Transcoder(..)
     , overStreamC
     , overFramesC
-    , frameResamplerM
+    , mapPayloadC
     , type StreamSink
     , type StreamSink'
     , foldStream
@@ -181,11 +180,6 @@ foldStreamC :: Monad m
             -> Conduit (Stream i s t c) m o
 foldStreamC = mapInput _stream (Just . MkStream) . foldSeriesC
 
-mapStreamC :: Monad m
-           => Conduit (Streamish i s t c) m (Streamish i' s' t' c')
-           -> Conduit (Stream i s t c) m (Stream i' s' t' c')
-mapStreamC = mapInput _stream (Just . MkStream) . mapOutput MkStream
-
 overStreamC :: Monad m
             => Conduit (Series (FrameCtx i s t) (Frame s t c)) m (Series (FrameCtx i' s' t') (Frame s' t' c'))
             -> Conduit (Stream i s t c) m (Stream i' s' t' c')
@@ -202,22 +196,10 @@ overFramesC f = overStreamC process
         toInitialCtx (MkFrame s t _) =
             MkFrameCtx def s t
 
-frameResamplerM :: forall i s t t' c c' m.
-                Monad m
-                => (t -> t')
-                -> (c -> m c')
-                -> ConduitM (Stream i s t c) (Stream i s t' c') m ()
-frameResamplerM fTicks fContent =
-    awaitForever (doContent . doTicks >=> yield)
-  where
-    doContent = lift .
-        mapMOf (stream .
-                    _Next .
-                        framePayload)
-               fContent
-    doTicks = over stream
-                   (over (_Start . frameCtxTimestampRef) fTicks .
-                        over (_Next . frameTimestamp) fTicks)
+mapPayloadC :: Monad m
+           => (c -> m c')
+           -> Conduit (Stream i s t c) m (Stream i s t c')
+mapPayloadC = mapMC . mapMOf payload
 
 class Transcoder from to where
     type TranscodingM from to (m :: Type -> Type) :: Constraint

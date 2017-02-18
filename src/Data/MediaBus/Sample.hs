@@ -85,7 +85,7 @@ class (SV.Storable (GetSampleType s), SetSampleType s (GetSampleType s) ~ s) =>
     type SetSampleType s t
     type GetSampleType s
     sampleCount :: s -> Int
-    eachSample :: Traversal' s (GetSampleType s)
+    eachSample :: SV.Storable t => Traversal s (SetSampleType s t) (GetSampleType s) t
     eachSample = sampleBuffer . sampleVector . each
     sampleBuffer :: SV.Storable t
                  => Lens s (SetSampleType s t) (SampleBuffer (GetSampleType s)) (SampleBuffer t)

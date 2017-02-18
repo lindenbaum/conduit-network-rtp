@@ -39,7 +39,7 @@ import           Test.QuickCheck
 import           Data.Functor
 
 newtype Ticks rate w = MkTicks { _ticks :: w }
-    deriving (Eq, Real, Integral, Enum, IsMonotone, Num, Arbitrary, Default)
+    deriving (Eq, Real, Integral, Enum, LocalOrd, Num, Arbitrary, Default)
 
 mkTicks :: forall proxy rate baseType.
         proxy '(rate, baseType)
@@ -86,14 +86,13 @@ instance (KnownNat r, Integral w, Show w) =>
                         show (natVal (Proxy :: Proxy r)) ++
                             "Hz)"
 
-instance (Eq w, IsMonotone w) =>
+instance (Eq w, LocalOrd w) =>
          Ord (Ticks rate w) where
     (<=) = flip succeeds
 
--- | Types with an integral duration, i.e. a duration that corresponds to an
--- integral number of sub-units (e.g. audio samples).
+-- | Types with a duration (e.g. audio samples).
 class HasDuration a where
-    getDuration :: Integral b => a -> b
+    getDuration :: a -> NominalDiffTime
 
 -- TODO rename *Timestamp to *Tick
 class SetTimestamp t (GetTimestamp t) ~ t =>
@@ -101,7 +100,8 @@ class SetTimestamp t (GetTimestamp t) ~ t =>
     type GetTimestamp t
     type SetTimestamp t s
 
-class HasTimestampT t =>
+class HasTimestampT t -- TODO inline HasTimestampT again
+       =>
       HasTimestamp t where
     timestamp :: Lens t (SetTimestamp t s) (GetTimestamp t) s
     timestamp' :: Lens' t (GetTimestamp t)
@@ -118,7 +118,7 @@ instance (HasTimestamp a, HasTimestamp b, GetTimestamp a ~ GetTimestamp b) =>
     timestamp f (Next b) = Next <$> timestamp f b
 
 -- * Media Data Synchronization
-deriveFrameTimestamp :: (Monad m, Integral (Ticks r t), HasDuration a, HasTimestamp a)
+deriveFrameTimestamp :: (Monad m, KnownNat r, Integral t, HasDuration a, HasTimestamp a)
                      => Ticks r t
                      -> Conduit a m (SetTimestamp a (Ticks r t))
 deriveFrameTimestamp t0 =
@@ -126,11 +126,11 @@ deriveFrameTimestamp t0 =
   where
     yieldSync sb = do
         t <- get
-        modify (+ getDuration sb)
+        modify (+ (nominalDiffTime # getDuration sb))
         yield (sb & timestamp .~ t)
 
 -- | Clocks can generate reference times, and they can convert these to tickss. Tickss are mere integrals
-class (Default (TimeDiff c), Ord (TimeDiff c), Eq (TimeDiff c), Num (TimeDiff c), Show (Time c), Eq (Time c), Show (TimeDiff c), IsMonotone (TimeDiff c)) =>
+class (Default (TimeDiff c), Ord (TimeDiff c), Eq (TimeDiff c), Num (TimeDiff c), Show (Time c), Eq (Time c), Show (TimeDiff c), LocalOrd (TimeDiff c)) =>
       IsClock c where
     data Time c
     data TimeDiff c
@@ -185,7 +185,7 @@ instance Arbitrary (TimeDiff UtcClock) where
 utcTimeDiff :: Lens' (TimeDiff UtcClock) NominalDiffTime
 utcTimeDiff = lens _utcTimeDiff (const MkUtcTimeDiff)
 
-instance IsMonotone (TimeDiff UtcClock) where
+instance LocalOrd (TimeDiff UtcClock) where
     succeeds = succeeds `on` roundToSeconds
       where
         roundToSeconds = round . (/ 1000000000000) . _utcTimeDiff

@@ -10,10 +10,11 @@ import           Data.MediaBus.Stream
 import           Data.MediaBus.SourceId
 import           Data.MediaBus.Sequence
 import           Data.MediaBus.Internal.Series
-import           Data.MediaBus.Internal.Conduit ()
+import           Data.MediaBus.Internal.Conduit ( dbgShowSink )
 import           Data.Streaming.Network
 import           Network.Socket                 ( SockAddr, close )
 import qualified Data.ByteString                as B
+import           Data.Word
 
 -- | A UDP source that uses 'MonandResource' to make sure the socket is closed.
 udpDatagramSource :: (IsClock c, MonadClock c m, MonadResource m, Num s)
@@ -26,7 +27,8 @@ udpDatagramSource _clk port host = do
     bracketP (bindPortUDP port host) close (`sourceSocket` 1024) .|
         evalStateC (Nothing, 0, t0) (awaitForever createFrame)
   where
-    createFrame m = do -- TODO use foldSeriesC here
+    createFrame m      -- TODO use foldSeriesC here
+     = do
         let currentSender = msgSender m
         lastSender <- _1 <<.= Just currentSender
         tNow <- lift (lift now)
@@ -38,6 +40,10 @@ udpDatagramSource _clk port host = do
                                                0)))
         sn <- _2 <<+= 1
         tStart <- use _3
-        yield (MkStream (Next (MkFrame (diffTime tNow tStart)
-                                       sn
-                                       (msgData m))))
+        yield (MkStream (Next (MkFrame (diffTime tNow tStart) sn (msgData m))))
+
+_receiveFromUDP :: IO [(Stream (SourceId SockAddr) (SeqNum Word64) (TimeDiff UtcClock) B.ByteString)]
+_receiveFromUDP = runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
+                                     --    rtpSource .|
+                                     dbgShowSink 1
+                                                 "RTP")
