@@ -13,6 +13,7 @@ import           Data.MediaBus.Audio.Alaw
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Stream
+import           Data.MediaBus.Transcoder
 import           Data.MediaBus.Internal.Series
 import qualified Data.MediaBus.Rtp.Packet      as Rtp
 import           Control.Monad
@@ -117,17 +118,17 @@ rtpPayloadDemux payloadTable fallbackContent =
                               lift (fromMaybe setFallbackContent mHandler frm) >>=
                                   yield
 
-type RtpPayloadHandler m t c = Frame Rtp.RtpSeqNum t Rtp.RtpPayload
-    -> m (Frame Rtp.RtpSeqNum t c)
+data SomePayloadHandler m out where
+        MkSomePayloadHandler ::
+          forall m from out .
+            (Monad m, Transcoder from out, TranscodingM from out m,
+             TranscodingSeqNum from out Rtp.RtpSeqNum,
+             TranscodingTicks from out Rtp.RtpTimestamp) =>
+            Frame Rtp.RtpSeqNum Rtp.RtpTimestamp Rtp.RtpPayload ->
+              m (Frame Rtp.RtpSeqNum Rtp.RtpTimestamp from) ->
+                SomePayloadHandler m out
 
-alawPayloadHandler :: Monad m
-                   => RtpPayloadHandler m t (SampleBuffer ALaw)
-alawPayloadHandler = return . (payload %~ (coerce . Rtp._rtpPayload))
+type RtpPayloadHandler m t c = Conduit (Frame Rtp.RtpSeqNum t Rtp.RtpPayload) m (Frame Rtp.RtpSeqNum t c)
 
--- TODO: Add a DTX stream state, indicating a silence period. The packet rate may drop during silence! Silence might begin with the reception of the first comfort noise packet, e.g. with payload type 13, see https://tools.ietf.org/html/rfc3389 and https://tools.ietf.org/html/rfc3551#section-4.1
-
--- TODO: split up the received data into equally sized chunks? - leave that to the application
-
--- TODO: drop duplicate packets
-
--- TODO: add parameters: channel layout, bit rate, ptime, maxptime
+alawPayloadHandler :: Monad m => RtpPayloadHandler m t (SampleBuffer ALaw)
+alawPayloadHandler = mapC (payload %~ (coerce . Rtp._rtpPayload))

@@ -8,9 +8,11 @@ import           Data.MediaBus.Clock          as X
 import           Data.MediaBus.DebugSink      as X
 import           Data.MediaBus.Rtp            as X
 import           Data.MediaBus.Rtp.Packet     as X
+import           Data.MediaBus.Packetizer     as X
 import           Data.MediaBus.Payload        as X
 import           Data.MediaBus.Sample         as X
 import           Data.MediaBus.Sequence       as X
 import           Data.MediaBus.SourceId       as X
 import           Data.MediaBus.Stream         as X
+import           Data.MediaBus.Transcoder     as X
 import           Data.MediaBus.Transport.Udp  as X

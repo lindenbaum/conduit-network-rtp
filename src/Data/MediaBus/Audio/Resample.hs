@@ -5,6 +5,7 @@ module Data.MediaBus.Audio.Resample
 
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Sample
+import           Data.MediaBus.Transcoder
 import           Data.MediaBus.Audio.Raw
 import           Conduit
 import qualified Data.Vector.Generic          as G

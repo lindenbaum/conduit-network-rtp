@@ -8,9 +8,9 @@ import           Data.MediaBus.Internal.Conduit
 import           Test.Hspec
 import qualified Data.MediaBus.Rtp.Packet       as Rtp
 import qualified Data.ByteString                as B
-import           Data.Proxy
-import           GHC.TypeLits
 import           Data.Word
+import           Control.Lens
+import           Control.Monad
 
 spec :: Spec
 spec = rtpSourceSpec >> rtpPayloadDemuxSpec
@@ -127,16 +127,59 @@ rtpSourceSpec = describe "rtpSource" $ do
 
 rtpPayloadDemuxSpec :: Spec
 rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
-    it "converts the sequence" pending
+    let runTestConduit inputs payloadHandlers fallback =
+            runConduitPure (sourceList inputs .|
+                                rtpSource .|
+                                rtpPayloadDemux payloadHandlers fallback .|
+                                consume)
+
+    it "always yields the fallback element if the payload table contains no handler" $
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+                     , mkTestRtpPacket 0 0 0
+                     ]
+            outs = preview payload <$> runTestConduit inputs [] ()
+        in
+            outs `shouldBe` [ Nothing, Just () ]
+    it "always yields the fallback element if the payload table contains no handler for the payload type" $
+        let inputs = MkStream (Start (MkFrameCtx 0 0 0)) :
+                [ mkTestRtpPacketWithPayload 0
+                                             0
+                                             0
+                                             (mkTestPayload (Rtp.MkRtpPayloadType p))
+                | p <- [0 .. 128] ]
+            fallback :: SampleBuffer (S16 8000)
+            fallback = mempty
+            outs = preview payload <$> runTestConduit inputs
+                                                      [ ( Rtp.MkRtpPayloadType 129
+                                                        , alawPayloadHandler >=>
+                                                            transcode
+                                                        )
+                                                      ]
+                                                      fallback
+        in
+            outs `shouldBe` Nothing :
+                [ Just fallback
+                | _ <- [0 .. 128 :: Word8] ]
 
 mkBrokenTestRtpPacket :: Stream Int Int Int B.ByteString
 mkBrokenTestRtpPacket = MkStream (Next (MkFrame 0 0 (B.pack [ 0, 0, 0 ])))
+
+mkTestPayload :: Rtp.RtpPayloadType -> Rtp.RtpPayload
+mkTestPayload pt = Rtp.MkRtpPayload pt (sampleBufferFromList [ 0, 0, 0 ])
 
 mkTestRtpPacket :: Rtp.RtpSsrc
                 -> Rtp.RtpSeqNum
                 -> Rtp.RtpTimestamp
                 -> Stream Int Int Int B.ByteString
 mkTestRtpPacket ssrc sn ts =
+    mkTestRtpPacketWithPayload ssrc sn ts (mkTestPayload 0)
+
+mkTestRtpPacketWithPayload :: Rtp.RtpSsrc
+                           -> Rtp.RtpSeqNum
+                           -> Rtp.RtpTimestamp
+                           -> Rtp.RtpPayload
+                           -> Stream Int Int Int B.ByteString
+mkTestRtpPacketWithPayload ssrc sn ts p =
     MkStream (Next (MkFrame 0
                             0
                             (Rtp.serialize (Rtp.MkRtpPacket (Rtp.MkRtpHeader 2
@@ -147,19 +190,16 @@ mkTestRtpPacket ssrc sn ts =
                                                                              ssrc
                                                                              []
                                                                              Nothing)
-                                                            (Rtp.MkRtpPayload 0
-                                                                              (sampleBufferFromList [ 0
-                                                                                                    , 0
-                                                                                                    , 0
-                                                                                                    ]))))))
+                                                            p))))
 
 _receiveRtpFromUDP :: IO [(Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks 8000 Word32) (SampleBuffer ALaw))]
 _receiveRtpFromUDP = runConduitRes (udpDatagramSource useUtcClock
                                                       10000
                                                       "127.0.0.1" .|
                                         rtpSource .|
-                                        rtpPayloadDemux [(Rtp.MkRtpPayloadType 8, alawPayloadHandler)] mempty .|
-                                        dbgShowSink 1 "RTP")-- _receiveRtpFromUDPAndDecodeAndPlayback ::  IO [RtpStream]
-                                                              -- _receiveRtpFromUDPAndDecodeAndPlayback = runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
-                                                              --     rtpSource .| dbgShowC 0.01 "RTP"
-                                                              --     .| rtpPayloadDemux [(8, Proxy :: Proxy (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks (Timing 8000 Word32)) (SampleBuffer ALaw)))])
+                                        rtpPayloadDemux [ ( Rtp.MkRtpPayloadType 8
+                                                          , alawPayloadHandler
+                                                          )
+                                                        ]
+                                                        mempty .|
+                                        dbgShowSink 1 "RTP")

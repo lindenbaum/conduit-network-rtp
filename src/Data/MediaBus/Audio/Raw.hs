@@ -26,7 +26,7 @@ newtype S16 (rate :: Nat) = MkS16 { _s16Sample :: Int16 }
 
 instance KnownNat r =>
          HasDuration (Proxy (S16 r)) where
-    getDuration _ = fromInteger (natVal (Proxy :: Proxy r))
+    getDuration _ = 1 / fromInteger (natVal (Proxy :: Proxy r))
 
 instance Show (S16 r) where
     show (MkS16 x) = show x

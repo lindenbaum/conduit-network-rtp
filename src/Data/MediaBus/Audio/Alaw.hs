@@ -9,12 +9,12 @@ import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Channels
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Sample
+import           Data.MediaBus.Transcoder
 import           Data.Bits
 import           Data.Word
 import           Data.Int
 import           Control.Lens
 import           Data.Proxy
-import           Conduit
 import           Data.Function                ( on )
 import           Test.QuickCheck              ( Arbitrary(..) )
 
@@ -33,12 +33,14 @@ instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel
 
 instance Transcoder (SampleBuffer ALaw) (SampleBuffer (S16 8000)) where
-    transcode = mapC (over (framePayload . eachSample)
-                           (MkS16 . decodeALawSample . _alawSample))
+    transcode = return .
+        over (framePayload . eachSample)
+             (MkS16 . decodeALawSample . _alawSample)
 
 instance Transcoder (SampleBuffer (S16 8000)) (SampleBuffer ALaw) where
-    transcode = mapC (over (framePayload . eachSample)
-                           (MkALaw . encodeALawSample . _s16Sample))
+    transcode = return .
+        over (framePayload . eachSample)
+             (MkALaw . encodeALawSample . _s16Sample)
 
 instance IsAudioSample ALaw where
     type GetAudioSampleRate ALaw = 8000

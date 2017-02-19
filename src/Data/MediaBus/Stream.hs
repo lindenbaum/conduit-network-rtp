@@ -18,9 +18,9 @@ module Data.MediaBus.Stream
     , stream
     , yieldStreamish
     , foldStreamC
-    , Transcoder(..)
     , overStreamC
     , overFramesC
+    , mapFramesC
     , mapPayloadC
     , type StreamSink
     , type StreamSink'
@@ -41,7 +41,6 @@ import           Control.Monad.Writer.Strict   ( tell )
 import           Data.Maybe
 import           Data.Word
 import           Test.QuickCheck
-import           Data.Kind
 import           Data.Default
 import           Text.Printf
 
@@ -196,16 +195,14 @@ overFramesC f = overStreamC process
         toInitialCtx (MkFrame s t _) =
             MkFrameCtx def s t
 
+mapFramesC :: Monad m => (Frame s t c -> m (Frame s t c'))
+             -> Conduit (Stream i s t c) m (Stream i s t c')
+mapFramesC f = mapMC (mapMOf (stream . _Next) f)
+
 mapPayloadC :: Monad m
            => (c -> m c')
            -> Conduit (Stream i s t c) m (Stream i s t c')
 mapPayloadC = mapMC . mapMOf payload
-
-class Transcoder from to where
-    type TranscodingM from to (m :: Type -> Type) :: Constraint
-    type TranscodingM from to m = Monad m
-    transcode :: TranscodingM from to m
-              => Conduit (Frame s t from) m (Frame s t to)
 
 type StreamSink i s t c m r = Sink (Stream i s t c) m r
 

@@ -21,6 +21,7 @@ import           Control.Monad.ST                ( ST, runST )
 import           GHC.Exts                        ( IsList(..) )
 import           Data.Typeable
 import           Data.MediaBus.Clock
+import           Data.MediaBus.Packetizer
 import qualified Data.ByteString                 as B
 import qualified Data.Vector.Storable.ByteString as Spool
 
@@ -50,6 +51,18 @@ instance (HasDuration (Proxy sampleType), SV.Storable sampleType) =>
     getDuration sb = let sampleDur = getDuration (Proxy :: Proxy sampleType)
                      in
                          sampleDur * fromIntegral (sampleCount sb)
+
+instance (SV.Storable a, HasDuration (Proxy a)) =>
+         CanSplitAfterDuration (SampleBuffer a) where
+    splitAfterDuration tPacket buf@(MkSampleBuffer bufV)
+        | getDuration buf > tPacket =
+              let (nextPacket, rest) = SV.splitAt n bufV
+              in
+                  Just (MkSampleBuffer nextPacket, MkSampleBuffer rest)
+        | otherwise = Nothing
+      where
+        n = ceiling (tPacket / tSample)
+        tSample = getDuration (Proxy :: Proxy a)
 
 instance SV.Storable s =>
          IsList (SampleBuffer s) where
@@ -85,7 +98,8 @@ class (SV.Storable (GetSampleType s), SetSampleType s (GetSampleType s) ~ s) =>
     type SetSampleType s t
     type GetSampleType s
     sampleCount :: s -> Int
-    eachSample :: SV.Storable t => Traversal s (SetSampleType s t) (GetSampleType s) t
+    eachSample :: SV.Storable t
+               => Traversal s (SetSampleType s t) (GetSampleType s) t
     eachSample = sampleBuffer . sampleVector . each
     sampleBuffer :: SV.Storable t
                  => Lens s (SetSampleType s t) (SampleBuffer (GetSampleType s)) (SampleBuffer t)
