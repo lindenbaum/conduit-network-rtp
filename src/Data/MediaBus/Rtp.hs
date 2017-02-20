@@ -13,7 +13,6 @@ import           Data.MediaBus.Audio.Alaw
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Stream
-import           Data.MediaBus.Transcoder
 import           Data.MediaBus.Internal.Series
 import qualified Data.MediaBus.Rtp.Packet      as Rtp
 import           Control.Monad
@@ -99,8 +98,6 @@ rtpSource = foldStreamC $
 data RRSourceChange = FrameCtxChanged | FrameCtxNotChanged
     deriving (Eq)
 
-type RtpOutStream = Stream Rtp.RtpSsrc Rtp.RtpSeqNum Rtp.RtpTimestamp B.ByteString
-
 rtpPayloadDemux :: (Integral t, Monad m)
                 => [(Rtp.RtpPayloadType, RtpPayloadHandler m (Ticks r t) c)]
                 -> c
@@ -118,17 +115,7 @@ rtpPayloadDemux payloadTable fallbackContent =
                               lift (fromMaybe setFallbackContent mHandler frm) >>=
                                   yield
 
-data SomePayloadHandler m out where
-        MkSomePayloadHandler ::
-          forall m from out .
-            (Monad m, Transcoder from out, TranscodingM from out m,
-             TranscodingSeqNum from out Rtp.RtpSeqNum,
-             TranscodingTicks from out Rtp.RtpTimestamp) =>
-            Frame Rtp.RtpSeqNum Rtp.RtpTimestamp Rtp.RtpPayload ->
-              m (Frame Rtp.RtpSeqNum Rtp.RtpTimestamp from) ->
-                SomePayloadHandler m out
-
-type RtpPayloadHandler m t c = Conduit (Frame Rtp.RtpSeqNum t Rtp.RtpPayload) m (Frame Rtp.RtpSeqNum t c)
+type RtpPayloadHandler m t c = Frame Rtp.RtpSeqNum t Rtp.RtpPayload -> m (Frame Rtp.RtpSeqNum t c)
 
 alawPayloadHandler :: Monad m => RtpPayloadHandler m t (SampleBuffer ALaw)
-alawPayloadHandler = mapC (payload %~ (coerce . Rtp._rtpPayload))
+alawPayloadHandler = return . (payload %~ (coerce . Rtp._rtpPayload))
