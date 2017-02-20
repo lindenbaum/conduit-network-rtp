@@ -6,7 +6,10 @@ import           Conduit
 import           Data.Conduit.List
 import           Data.MediaBus
 import           Control.Monad
+import           Data.Word
 import           Data.MediaBus.Internal.Conduit
+import           Data.MediaBus.Internal.Series
+import           Control.Lens
 
 spec :: Spec
 spec = describe "Stream conduits" $
@@ -20,19 +23,40 @@ _helloWorld = void $
                     dbgShowC 1 "YO" .|
                     consume)
 
-_sampleSomeStream :: IO [Stream' 8000 Bool]
-_sampleSomeStream = join <$> sample' (resize 30 (listOf1 arbitrary))
+_sampleSomeStream :: IO ALittleOutOfOrder
+_sampleSomeStream = MkALittleOutOfOrder <$> sample' arbitrary
 
-_yieldStream :: Monad m => [Stream' 8000 Bool] -> Source m (Stream' 8000 Bool)
-_yieldStream frames = yieldMany frames .|
-    dbgShowC 1 "ORIGINAL"
+_yieldStream :: Monad m
+             => ALittleOutOfOrder
+             -> Source m (Stream () (SeqNum Word16) () ())
+_yieldStream (MkALittleOutOfOrder frames) =
+    yieldMany frames .|
+        dbgShowC 1 "ORIGINAL"
 
 _reorderSomeFrames = void $
     _sampleSomeStream >>=
-        \fs -> runConduit (_yieldStream fs .|
-                               overStreamC (reorderSeries (\(MkFrame t s _) -> MkFrameCtx (MkSourceId 0)
-                                                                                          t
-                                                                                          s)
-                                                          2 .|
-                                                dbgShowC 1 "ORDERED") .|
-                               consume)
+        (\fs -> runConduit (_yieldStream fs .|
+                                reorderFramesBySeqNumC 2 .|
+                                dbgShowC 1 "     ORDERED" .|
+                                consume))
+
+newtype ALittleOutOfOrder =
+      MkALittleOutOfOrder { fromALittleOutOfOrder :: [Stream () (SeqNum Word16) () ()]
+                          }
+
+instance Arbitrary ALittleOutOfOrder where
+    arbitrary = do
+        start <- (MkStream . Start) <$> arbitrary
+        (len :: Int) <- arbitrary
+        MkALittleOutOfOrder <$> loop (start ^. seqNum) (len + 10) [ start ]
+      where
+        loop (MkSeqNum lastSeq) n acc
+            | n == 0 = return acc
+            | otherwise = do
+                  nextSeq' <- choose (lastSeq +1, lastSeq + 2)
+                  ts <- arbitrary
+                  c <- arbitrary
+                  let nextSeq = MkSeqNum nextSeq'
+                  loop nextSeq
+                       (n - 1)
+                       (MkStream (Next (MkFrame ts nextSeq c)) : acc)

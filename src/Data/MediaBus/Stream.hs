@@ -21,7 +21,10 @@ module Data.MediaBus.Stream
     , overStreamC
     , overFramesC
     , mapFramesC
+    , mapSeqNumC
+    , mapTicksC
     , mapPayloadC
+    , convertTicksC
     , type StreamSink
     , type StreamSink'
     , foldStream
@@ -43,6 +46,7 @@ import           Data.Word
 import           Test.QuickCheck
 import           Data.Default
 import           Text.Printf
+import           GHC.TypeLits
 
 type SourceId' = SourceId Word32
 
@@ -195,14 +199,32 @@ overFramesC f = overStreamC process
         toInitialCtx (MkFrame s t _) =
             MkFrameCtx def s t
 
-mapFramesC :: Monad m => (Frame s t c -> m (Frame s t c'))
-             -> Conduit (Stream i s t c) m (Stream i s t c')
+mapFramesC :: Monad m
+           => (Frame s t c -> m (Frame s t c'))
+           -> Conduit (Stream i s t c) m (Stream i s t c')
 mapFramesC f = mapMC (mapMOf (stream . _Next) f)
 
+mapSeqNumC :: Monad m
+           => (s -> s')
+           -> Conduit (Stream i s t c) m (Stream i s' t c)
+mapSeqNumC = mapC . over seqNum
+
+mapTicksC :: Monad m
+          => (t -> t')
+          -> Conduit (Stream i s t c) m (Stream i s t' c)
+mapTicksC = mapC . over timestamp
+
 mapPayloadC :: Monad m
-           => (c -> m c')
-           -> Conduit (Stream i s t c) m (Stream i s t c')
+            => (c -> m c')
+            -> Conduit (Stream i s t c) m (Stream i s t c')
 mapPayloadC = mapMC . mapMOf payload
+
+convertTicksC :: forall proxy0 proxy1 m r t r' t' i s c.
+              (KnownNat r, KnownNat r', Integral t, Integral t', Monad m)
+              => proxy0 '(r, t)
+              -> proxy1 '(r', t')
+              -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r' t') c)
+convertTicksC _ _ = mapTicksC convertTicks
 
 type StreamSink i s t c m r = Sink (Stream i s t c) m r
 

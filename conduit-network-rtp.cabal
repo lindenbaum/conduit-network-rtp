@@ -17,30 +17,32 @@ library
   hs-source-dirs:      src
   exposed-modules:
                        Data.MediaBus
-                     , Data.MediaBus.Audio.Raw
                      , Data.MediaBus.Audio.Alaw
                      , Data.MediaBus.Audio.Channels
+                     , Data.MediaBus.Audio.Raw
                      , Data.MediaBus.Audio.Resample
-                     , Data.MediaBus.SourceId
                      , Data.MediaBus.Clock
                      , Data.MediaBus.DebugSink
-                     , Data.MediaBus.Stream
                      , Data.MediaBus.Internal.AsyncConduit
                      , Data.MediaBus.Internal.BiIndex
                      , Data.MediaBus.Internal.Conduit
                      , Data.MediaBus.Internal.Monotone
-                     , Data.MediaBus.Internal.Series
+                     , Data.MediaBus.Internal.OrderedBy
                      , Data.MediaBus.Internal.RingBuffer
-                     , Data.MediaBus.Payload
+                     , Data.MediaBus.Internal.Series
                      , Data.MediaBus.Packetizer
+                     , Data.MediaBus.Payload
+                     , Data.MediaBus.Reorder
+                     , Data.MediaBus.Rtp
+                     , Data.MediaBus.Rtp.Packet
                      , Data.MediaBus.Sample
                      , Data.MediaBus.Sequence
+                     , Data.MediaBus.SourceId
+                     , Data.MediaBus.Stream
                      , Data.MediaBus.Transcoder
                      , Data.MediaBus.Transport.Udp
-                     , Data.MediaBus.Rtp.Packet
-                     , Data.MediaBus.Rtp
   default-language:    Haskell2010
-  ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds
+  ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind
   default-extensions:  ApplicativeDo
                      , BangPatterns
                      , ConstraintKinds
@@ -111,14 +113,15 @@ test-suite tests
   hs-source-dirs:      specs
   main-is:             Spec.hs
   other-modules:       Data.MediaBus.Audio.ResampleSpec
+                     , Data.MediaBus.ClockSpec
                      , Data.MediaBus.Internal.BiIndexSpec
                      , Data.MediaBus.Internal.RingBufferSpec
-                     , Data.MediaBus.ClockSpec
-                     , Data.MediaBus.StreamSpec
-                     , Data.MediaBus.RtpSpec
                      , Data.MediaBus.PacketizerSpec
+                     , Data.MediaBus.ReorderSpec
+                     , Data.MediaBus.RtpSpec
                      , Data.MediaBus.SampleSpec
                      , Data.MediaBus.SequenceSpec
+                     , Data.MediaBus.StreamSpec
   default-language:    Haskell2010
   build-depends:       QuickCheck
                      , array
@@ -195,7 +198,6 @@ test-suite tests
                      -fno-warn-unused-do-bind
                      -fno-warn-missing-signatures
                      -fno-warn-type-defaults
-                     -fprint-explicit-kinds
 
 source-repository head
   type:     git

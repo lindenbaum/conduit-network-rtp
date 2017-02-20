@@ -160,6 +160,35 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
             outs `shouldBe` Nothing :
                 [ Just fallback
                 | _ <- [0 .. 128 :: Word8] ]
+    it "invokes the first matching payload handler" $
+        let inputs = MkStream (Start (MkFrameCtx 0 0 0)) :
+                [ mkTestRtpPacketWithPayload 0 0 0 (mkTestPayload 8)
+                , mkTestRtpPacketWithPayload 0 0 0 (mkTestPayload 0) ]
+            outputs = preview payload <$> runTestConduit inputs
+                                                         [ ( 8
+                                                           , return .
+                                                               (payload .~
+                                                                    "first 8 handler")
+                                                           )
+                                                         , ( 8
+                                                           , return .
+                                                               (payload .~
+                                                                    "second 8 handler")
+                                                           )
+                                                         , ( 0
+                                                           , return .
+                                                               (payload .~
+                                                                    "first 0 handler")
+                                                           )
+                                                         , ( 0
+                                                           , return .
+                                                               (payload .~
+                                                                    "second 0 handler")
+                                                           )
+                                                         ]
+                                                         "bad"
+        in
+            outputs `shouldBe` [ Nothing, Just "first 8 handler", Just "first 0 handler" ]
 
 mkBrokenTestRtpPacket :: Stream Int Int Int B.ByteString
 mkBrokenTestRtpPacket = MkStream (Next (MkFrame 0 0 (B.pack [ 0, 0, 0 ])))
@@ -192,14 +221,18 @@ mkTestRtpPacketWithPayload ssrc sn ts p =
                                                                              Nothing)
                                                             p))))
 
-_receiveRtpFromUDP :: IO [(Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks 8000 Word32) (SampleBuffer ALaw))]
+_receiveRtpFromUDP :: IO [(Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks 16000 Word64) (SampleBuffer (S16 16000)))]
 _receiveRtpFromUDP = runConduitRes (udpDatagramSource useUtcClock
                                                       10000
                                                       "127.0.0.1" .|
                                         rtpSource .|
-                                        rtpPayloadDemux [ ( Rtp.MkRtpPayloadType 8
+                                        rtpPayloadDemux [ ( 8
                                                           , alawPayloadHandler
                                                           )
                                                         ]
                                                         mempty .|
+                                        transcodeStreamC .|
+                                        resample8to16kHz (MkS16 0 :: S16 8000) .|
+                                        convertTicksC at8kHzU32 at16kHzU64 .|
+       --                                 reorder 3 .|
                                         dbgShowSink 1 "RTP")

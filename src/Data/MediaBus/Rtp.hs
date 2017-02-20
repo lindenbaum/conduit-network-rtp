@@ -1,3 +1,4 @@
+{-# OPTIONS -Wno-unused-top-binds #-}
 module Data.MediaBus.Rtp
     ( type RtpStream
     , rtpSource
