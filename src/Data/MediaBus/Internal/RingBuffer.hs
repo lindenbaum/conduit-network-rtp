@@ -1,6 +1,5 @@
 -- | A circular buffer with a focus on high performance(TODO), useful e.g. for
 -- bounded queues, e.g. in multimedia applications.
-
 module Data.MediaBus.Internal.RingBuffer
     ( -- * Ring Buffer Data Type
       RingBuffer()
@@ -37,8 +36,8 @@ module Data.MediaBus.Internal.RingBuffer
 import           Control.Lens
 import           Data.Array
 import           Data.Default
-import           Data.Function (on)
-import           Data.List     (unfoldr)
+import           Data.Function ( on )
+import           Data.List     ( unfoldr )
 import           Data.Typeable
 import           Text.Printf
 
@@ -51,7 +50,7 @@ data RingBuffer e = MkRingBuffer { ringBuffer :: Array Int e
     deriving (Typeable)
 
 instance Foldable RingBuffer where
-  foldr f z = foldr f z . popAll
+    foldr f z = foldr f z . popAll
 
 instance Eq e =>
          Eq (RingBuffer e) where
@@ -60,18 +59,37 @@ instance Eq e =>
 instance (Typeable e, Show e) =>
          Show (RingBuffer e) where
     show r@MkRingBuffer{ringBuffer,startIndex,size} =
-        printf "Ring buffer for up to %d elements of type: %s\n  size: %d\nstart: %d\n  end: %d\n  elements: %s\n"
+        printf "Ring buffer for up to %d elements of type: %s\n  size: %d\n  elements:\n%s\n"
                (capacity r)
                (show (typeRep r))
                size
-               startIndex
-               (view endPosition r)
-               (show (assocs ringBuffer))
+               (showElems (assocs ringBuffer))
+      where
+        showElems = unlines .
+            map (\(k, v) -> printf "    %1s %1s %5s:  %s"
+                                   (if k == r ^. endPosition
+                                         then "<" :: String
+                                         else "")
+                                   (if k == startIndex
+                                    then ">" :: String
+                                    else "")
+                                   (show k)
+                                   (show v))
 
 -- | Create a new 'RingBuffer' with the given 'capacity'. All elements are
 -- initialized to 'def', hence the 'Default' constraint on the type parameter.
 --
 -- The ring capacity must not exceed @2^28@.
+--
+-- REPL recipes:
+--
+-- @@@
+-- let r0 = newRingBuffer 10 :: RingBuffer Int
+-- let r1 = r0 & lastElement .~ 10 & allocLast & lastElement .~ 11 & allocLast & lastElement .~ 12
+-- r1 ^. firstElement
+-- r1 & freeFirst
+-- (r1 & freeFirst) ^. firstElement
+-- @@@
 newRingBuffer :: (Default e) => Int -> RingBuffer e
 newRingBuffer n = fromList (replicate n def)
 
