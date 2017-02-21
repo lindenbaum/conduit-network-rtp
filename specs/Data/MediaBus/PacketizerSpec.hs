@@ -22,48 +22,65 @@ spec = describe "repacketizeC" $ do
         property inputPacketsAlreadyHaveTheDesiredDurationSeqnum
     it "the sequence numbers of all output frames are strictly monotonic increasing, if the input packets are split into more packets" $
         property inputPacketsHaveAnIntegralMultipleOfTheDesiredDurationSeqnum
+    it "adapts the time stamps, when the input packets are split into more packets, such that the new duration is reflected in the frame time stamps" $
+        property inputPacketsHaveAnIntegralMultipleOfTheDesiredDurationTicks
 
 inputPacketsAlreadyHaveTheDesiredDuration (Positive len) count =
     let inputs = [ mkTestPacket n len
                  | n <- [0 .. count] ]
     in
-        length (outputs inputs len) `shouldBe` length inputs
+        length (runRepacketize inputs len) `shouldBe` length inputs
 
 inputPacketsHaveAnIntegralMultipleOfTheDesiredDuration (Positive len) count (Positive mult) =
     let inputs = [ mkTestPacket n (len * mult)
                  | n <- [0 .. count] ]
     in
-        (length (outputs inputs len) `div` mult) `shouldBe` length inputs
+        (length (runRepacketize inputs len) `div` mult) `shouldBe` length inputs
 
 inputPacketsAreBiggerAndNotDivisibleByTheDesiredDuration (Positive count) =
     let inputs = [ mkTestPacket n 25
                  | n <- [0 .. count] ]
     in
-        length (outputs inputs (10 :: Word8)) `shouldBe` length inputs +
+        length (runRepacketize inputs (10 :: Word8)) `shouldBe` length inputs +
             2 * (fromIntegral count + 1)
 
 inputPacketsAlreadyHaveTheDesiredDurationSeqnum (Positive len) count =
     let inputs = [ mkTestPacket n len
                  | n <- [0 .. count] ]
     in
-        seqNumStrictlyMonotoneIncreasing $ outputs inputs len
+        seqNumStrictlyMonotoneIncreasing $ runRepacketize inputs len
 
 inputPacketsHaveAnIntegralMultipleOfTheDesiredDurationSeqnum (Positive len) count (Positive mult) =
     let inputs = [ mkTestPacket n (len * mult)
                  | n <- [0 .. count] ]
     in
-        seqNumStrictlyMonotoneIncreasing $ outputs inputs len
+        seqNumStrictlyMonotoneIncreasing $ runRepacketize inputs len
+
+inputPacketsHaveAnIntegralMultipleOfTheDesiredDurationTicks (Positive len) count (Positive mult) =
+    let inputs = [ mkTestPacket n (len * mult)
+                 | n <- [0 .. count] ]
+    in
+        ticksStrictlyMonotoneIncreasing (fromIntegral len) $
+            runRepacketize inputs len
 
 seqNumStrictlyMonotoneIncreasing outs =
     let res = view seqNum <$> outs
     in
         zipWith (-) (Prelude.drop 1 res) res `shouldSatisfy` all (== 1)
 
-outputs inputs len = runConduitPure (sourceList inputs .|
-                                         repacketizeC (fromIntegral len) .|
-                                         consume)
+ticksStrictlyMonotoneIncreasing dur outs =
+    let res = view timestamp' <$> outs
+    in
+        zipWith (-) (Prelude.drop 1 res) res `shouldSatisfy` all (== dur)
 
-mkTestPacket :: Word8 -> Int -> Stream () Word8 Word8 (SampleBuffer (S16 1))
-mkTestPacket sn len = MkStream (Next (MkFrame sn
+runRepacketize inputs len =
+    runConduitPure (sourceList inputs .|
+                        repacketizeC (fromIntegral len / 8000) .|
+                        consume)
+
+mkTestPacket :: Word8
+             -> Int
+             -> Stream () Word8 (Ticks 8000 Word32) (SampleBuffer (S16 8000))
+mkTestPacket sn len = MkStream (Next (MkFrame (MkTicks (fromIntegral sn * fromIntegral len))
                                               sn
                                               (MkSampleBuffer (V.replicate len 0))))

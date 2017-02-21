@@ -7,34 +7,39 @@ module Data.MediaBus.Packetizer
 
 import           Conduit
 import           Data.MediaBus.Stream
+import           Data.MediaBus.Clock
 import           Data.Time.Clock
 import           Data.Default
 import           Control.Monad.State.Strict
+import           GHC.TypeLits
+import           Control.Lens
 
 -- | The packetizer splits large packets into smaller pieces of the given size,
 -- if the size is not divisible by the packet size, the last packet might be
 -- smaller. The sequence numbers will be offsetted by the number extra frames
 -- generated.
-repacketizeC :: (Num s, Monad m, CanSplitAfterDuration c, Default i)
+repacketizeC :: (Num s, Monad m, HasDuration c, CanSplitAfterDuration c, Default i, KnownNat r, Integral t)
              => NominalDiffTime
-             -> Conduit (Stream i s t c) m (Stream i s t c)
+             -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r t) c)
 repacketizeC packetDuration =
     overFramesC go
   where
     go _ = evalStateC 0 (awaitForever handleFrames)
     handleFrames (MkFrame t s cIn) =
-        yieldLoop cIn
+        yieldLoop cIn 0
       where
-        yieldLoop c = case splitAfterDuration packetDuration c of
-            Just (packet, rest) -> do
-                yieldWithAdaptedSeqNum packet
-                modify (+ 1)
-                yieldLoop rest
-            Nothing -> yieldWithAdaptedSeqNum c
+        yieldLoop c timeOffset =
+            case splitAfterDuration packetDuration c of
+                Just (packet, rest) -> do
+                    yieldWithAdaptedSeqNumAndTimestamp packet
+                    modify (+ 1)
+                    let packetDurationInTicks = nominalDiffTime # getDuration packet
+                    yieldLoop rest (timeOffset + packetDurationInTicks)
+                Nothing -> yieldWithAdaptedSeqNumAndTimestamp c
           where
-            yieldWithAdaptedSeqNum p = do
+            yieldWithAdaptedSeqNumAndTimestamp p = do
                 seqNumOffset <- get
-                yield (MkFrame t (s + seqNumOffset) p)
+                yield (MkFrame (t + timeOffset) (s + seqNumOffset) p)
 
 -- | Class of types that support splitting of from the front a packet containing
 -- roughly a certain duration.

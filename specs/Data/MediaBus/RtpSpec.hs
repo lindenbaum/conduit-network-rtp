@@ -235,4 +235,6 @@ _receiveRtpFromUDP = runConduitRes (udpDatagramSource useUtcClock
                                         resample8to16kHz (MkS16 0 :: S16 8000) .|
                                         convertTicksC at8kHzU32 at16kHzU64 .|
                                         reorderFramesBySeqNumC 5 .|
-                                        dbgShowSink 1 "")
+                                        dbgShowC 1 "" .|
+                                        repacketizeC (5/1000) .|
+                                        dbgShowSink 1 "REPACKETIZED")
