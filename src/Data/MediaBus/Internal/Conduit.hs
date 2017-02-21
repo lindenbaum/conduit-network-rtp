@@ -51,12 +51,14 @@ dbgShowC probability msg =
                     let omittedmsg = if omitted == 0
                                      then ""
                                      else " *** " ++
-                                          show omitted ++
-                                          " messages omitted"
-                    traceM (msg ++ ": " ++ show x ++ omittedmsg)
+                                         show omitted ++
+                                         " messages omitted"
+                    traceM ((if null msg then "" else msg ++ ": ") ++ show x ++
+                                omittedmsg)
                     State.put (g', 0)
                 else State.put (g', omitted + 1)
             yield x
 
 dbgShowSink :: (Show a, Monad m) => Double -> String -> Consumer a m [a]
-dbgShowSink probability msg = dbgShowC probability msg .| consume
+dbgShowSink probability msg =
+    dbgShowC probability msg .| consume

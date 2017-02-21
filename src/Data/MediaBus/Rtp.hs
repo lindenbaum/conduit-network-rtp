@@ -1,4 +1,5 @@
 {-# OPTIONS -Wno-unused-top-binds #-}
+
 module Data.MediaBus.Rtp
     ( type RtpStream
     , rtpSource
@@ -44,23 +45,13 @@ rtpSource = foldStreamC $
             Left rtpError -> traceRtpError rtpError
             Right rtpPacket -> do
                 let rtpHeader = Rtp.header rtpPacket
-                wasFirst <- use isFirstPacket
-                (oldCtx, res) <- updateState rtpHeader
-                when (res == FrameCtxChanged)
-                     (traceSourceChangeM wasFirst oldCtx >> yieldStreamStart)
+                res <- updateState rtpHeader
+                when (res == FrameCtxChanged) yieldStreamStart
                 yieldStreamNext (Rtp.body rtpPacket)
 
     traceRtpError e = do
         ctx <- use currCtx
         traceM (printf "RTP-ERROR:%s  Ctx: %s\n" e (show ctx))
-
-    traceSourceChangeM isFirst oldCtx = do
-        newCtx <- use currCtx
-        if isFirst
-            then traceM (printf "RTP-START:\n  Ctx: %s\n" (show newCtx))
-            else traceM (printf "RTP-RESTART:\n  Old-Ctx: %s\n  New-Ctx: %s\n"
-                                (show oldCtx)
-                                (show newCtx))
 
     updateState rtpHeader = do
         oldCtx <- currCtx <<%=
@@ -70,14 +61,14 @@ rtpSource = foldStreamC $
         if oldCtx ^. frameCtxSourceId /= Rtp.ssrc rtpHeader
             then do
                 currCtx . frameCtxSourceId .= Rtp.ssrc rtpHeader
-                return (oldCtx, FrameCtxChanged)
+                return FrameCtxChanged
             else if sequenceNumbersDifferTooMuch (oldCtx ^. frameCtxSeqNumRef)
                                                  (Rtp.sequenceNumber rtpHeader) ||
                      timestampsDifferTooMuch (oldCtx ^. frameCtxTimestampRef)
                                              (Rtp.timestamp rtpHeader) ||
                      wasFirstPacket
-                 then return (oldCtx, FrameCtxChanged)
-                 else return (oldCtx, FrameCtxNotChanged)
+                 then return FrameCtxChanged
+                 else return FrameCtxNotChanged
       where
         sequenceNumbersDifferTooMuch oldSN currSN =
             let d = if currSN >= oldSN then currSN - oldSN else oldSN - currSN -- TODO use LocalOrd??
@@ -116,7 +107,8 @@ rtpPayloadDemux payloadTable fallbackContent =
                               lift (fromMaybe setFallbackContent mHandler frm) >>=
                                   yield
 
-type RtpPayloadHandler m t c = Frame Rtp.RtpSeqNum t Rtp.RtpPayload -> m (Frame Rtp.RtpSeqNum t c)
+type RtpPayloadHandler m t c = Frame Rtp.RtpSeqNum t Rtp.RtpPayload
+    -> m (Frame Rtp.RtpSeqNum t c)
 
 alawPayloadHandler :: Monad m => RtpPayloadHandler m t (SampleBuffer ALaw)
 alawPayloadHandler = return . (payload %~ (coerce . Rtp._rtpPayload))
