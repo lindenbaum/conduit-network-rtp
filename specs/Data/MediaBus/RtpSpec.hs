@@ -11,6 +11,7 @@ import qualified Data.ByteString                as B
 import           Data.Word
 import           Control.Lens
 import           Control.Monad
+import           Data.Proxy
 
 spec :: Spec
 spec = rtpSourceSpec >> rtpPayloadDemuxSpec
@@ -163,7 +164,8 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
     it "invokes the first matching payload handler" $
         let inputs = MkStream (Start (MkFrameCtx 0 0 0)) :
                 [ mkTestRtpPacketWithPayload 0 0 0 (mkTestPayload 8)
-                , mkTestRtpPacketWithPayload 0 0 0 (mkTestPayload 0) ]
+                , mkTestRtpPacketWithPayload 0 0 0 (mkTestPayload 0)
+                ]
             outputs = preview payload <$> runTestConduit inputs
                                                          [ ( 8
                                                            , return .
@@ -188,7 +190,8 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
                                                          ]
                                                          "bad"
         in
-            outputs `shouldBe` [ Nothing, Just "first 8 handler", Just "first 0 handler" ]
+            outputs `shouldBe`
+                [ Nothing, Just "first 8 handler", Just "first 0 handler" ]
 
 mkBrokenTestRtpPacket :: Stream Int Int Int B.ByteString
 mkBrokenTestRtpPacket = MkStream (Next (MkFrame 0 0 (B.pack [ 0, 0, 0 ])))
@@ -221,7 +224,19 @@ mkTestRtpPacketWithPayload ssrc sn ts p =
                                                                              Nothing)
                                                             p))))
 
-_receiveRtpFromUDP :: IO [(Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks 16000 Word64) (SampleBuffer (S16 16000)))]
+
+{- Send test data with:
+#!/bin/bash
+
+PORT=${1?port missing}
+MY_IP=${2?host ip missing}
+FNAME=${3:-28797-04.ogg}
+FILE=$(realpath $(dirname ${0})/$FNAME)
+
+gst-launch-1.0  uridecodebin uri=file://$FILE ! audioconvert ! audioresample !  audio/x-raw,format=S16LE,rate=8000,channels=1 ! alawenc ! rtppcmapay pt=8 mtu=172 min-ptime=10000000 max-ptime=200000000  ptime-multiple=5000000 ! udpsink host=$MY_IP port=$PORT
+-}
+
+_receiveRtpFromUDP :: IO ()
 _receiveRtpFromUDP = runConduitRes (udpDatagramSource useUtcClock
                                                       10000
                                                       "127.0.0.1" .|
@@ -232,9 +247,15 @@ _receiveRtpFromUDP = runConduitRes (udpDatagramSource useUtcClock
                                                         ]
                                                         mempty .|
                                         transcodeStreamC .|
-                                        resample8to16kHz (MkS16 0 :: S16 8000) .|
+                                        -- resample8to16kHz (MkS16 0 :: S16 8000) .|
                                         convertTicksC at8kHzU32 at16kHzU64 .|
-                                        reorderFramesBySeqNumC 5 .|
-                                        dbgShowC 1 "" .|
-                                        repacketizeC (5/1000) .|
-                                        dbgShowSink 1 "REPACKETIZED")
+                                        annotateTypeC _receiveRtpFromUDPStreamType
+                                                      (reorderFramesBySeqNumC 5) .|
+                                        -- dbgShowC 0.001 "" .|
+                                        repacketizeC (10 / 1000) .|
+                                        dbgShowC 0.001 "REPACKETIZED" .|
+                                        streamDebugPlaybackSink)
+
+_receiveRtpFromUDPStreamType :: Proxy (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks 16000 Word64) (SampleBuffer (S16 8000)))
+_receiveRtpFromUDPStreamType =
+    Proxy

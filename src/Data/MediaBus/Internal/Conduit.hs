@@ -1,6 +1,7 @@
 module Data.MediaBus.Internal.Conduit
     ( overRightC
     , fmapMC
+    , annotateTypeC
     , dbgShowC
     , dbgShowSink
     ) where
@@ -38,6 +39,9 @@ fmapMC f = awaitForever go
     go sn = do
         b <- lift (f sn)
         yield (sn $> b)
+
+annotateTypeC :: proxy a -> Conduit a m a -> Conduit a m a
+annotateTypeC _ = id
 
 dbgShowC :: (Show a, Monad m) => Double -> String -> Conduit a m a
 dbgShowC probability msg =

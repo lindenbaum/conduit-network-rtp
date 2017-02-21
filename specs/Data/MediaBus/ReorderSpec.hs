@@ -4,6 +4,7 @@ import           Conduit
 import           Data.Conduit.List
 import           Data.MediaBus
 import           Data.MediaBus.Internal.Series
+import           Data.MediaBus.Internal.Conduit
 import           Test.Hspec
 import           Data.Proxy
 import           Data.Word
@@ -12,7 +13,7 @@ import           Test.QuickCheck
 spec :: Spec
 spec = describe "reorderFramesBySeqNumC" $ do
     let runC inputs = runConduitPure (sourceList inputs .|
-                                          setConduitType (Proxy :: Proxy (Stream () Word8 () ()))
+                                          annotateTypeC (Proxy :: Proxy (Stream () Word8 () ()))
                                                          (reorderFramesBySeqNumC 3) .|
                                           consume)
 
@@ -165,9 +166,6 @@ isMonoIncreasingAndHigherThanStartSeqNumN _ (MkStream (Start (MkFrameCtx () () s
 isMonoIncreasingAndHigherThanStartSeqNumN sn (MkStream (Next (MkFrame () snFrame ())) : rest)
     | snFrame >= sn = isMonoIncreasingAndHigherThanStartSeqNumN snFrame rest
     | otherwise = False
-
-setConduitType :: proxy a -> Conduit a m a -> Conduit a m a
-setConduitType _ = id
 
 startFrame :: Word8 -> Stream () Word8 () ()
 startFrame sn = MkStream (Start (MkFrameCtx () () sn))
