@@ -22,6 +22,8 @@ TODO: Add RTCP support
 > import Data.MediaBus.Sequence
 > import Control.Lens
 > import Data.MediaBus.Sample
+> import GHC.Generics         ( Generic )
+> import Control.DeepSeq
 
 The relevant output will be contained in the 'RtpPacket' and 'RtpHeader' data
 types.
@@ -29,7 +31,7 @@ types.
 > data RtpPacket =
 >   MkRtpPacket { header :: !RtpHeader
 >               , body   :: !RtpPayload }
->   deriving (Eq)
+>   deriving (Eq, Generic)
 
 The rtp header defines the logical source(s), the sequence number and the
 timestamp of the respecitive 'RtpPayload'.
@@ -39,23 +41,29 @@ timestamp of the respecitive 'RtpPayload'.
 >               , hasPadding      :: !Bool
 >               , hasMarker       :: !Bool
 >               , sequenceNumber  :: !RtpSeqNum
->               , timestamp       :: !RtpTimestamp
+>               , headerTimestamp :: !RtpTimestamp
 >               , ssrc            :: !RtpSsrc
 >               , csrcs           :: ![RtpSsrc]
 >               , headerExtension :: !(Maybe HeaderExtension)}
->   deriving (Eq)
+>   deriving (Eq, Generic)
 
 An SSRC is basically just a 'Word32'.
 
 > newtype RtpSsrc = MkRtpSsrc { rtpSsrc :: Word32 }
->   deriving (Eq, Ord, Num, Bits, Default)
+>   deriving (Eq, Ord, Num, Bits, Default,Generic)
+
+> instance NFData RtpSsrc
+
 > instance Show RtpSsrc where
 >   show (MkRtpSsrc w) = printf "ssrc:%10d" w
 
 A timestamp is basically just a 'Word32', too.
 
 > newtype RtpTimestamp = MkRtpTimestamp { _rtpTimestamp :: Word32 }
->   deriving (Eq, Num, Bits, Default)
+>   deriving (Eq, Num, Bits, Default, Generic)
+
+> instance NFData RtpTimestamp
+
 > instance Show RtpTimestamp where
 >   show (MkRtpTimestamp w) = printf "ts:%10d" w
 
@@ -83,12 +91,17 @@ following the fixed size RTP header:
 > data HeaderExtension =
 >   MkHeaderExtension { headerExtensionField :: !Word16
 >                     , headerExtensionBody  :: ![Word32] }
->   deriving (Read,Eq,Show)
+>   deriving (Read,Eq,Show, Generic)
+
+> instance NFData HeaderExtension
 
 A payload type is basically just a 'Word8':
 
 > newtype RtpPayloadType = MkRtpPayloadType { _rtpPayloadTypeValue :: Word8 }
->   deriving (Eq, Num, Bits, Default)
+>   deriving (Eq, Num, Bits, Default, Generic)
+
+> instance NFData RtpPayloadType
+
 > instance Show RtpPayloadType where
 >   show (MkRtpPayloadType w) = printf "pt:%3d" w
 
@@ -98,7 +111,10 @@ with the 'RtpPayloadType'.
 > data RtpPayload = MkRtpPayload { _rtpPayloadType :: RtpPayloadType
 >                                , _rtpPayload     :: SampleBuffer Word8
 >                                }
->    deriving (Eq)
+>    deriving (Eq, Generic)
+
+> instance NFData RtpPayload
+
 > makeLenses ''RtpPayloadType
 > makeLenses ''RtpPayload
 
@@ -361,7 +377,7 @@ If a the extension flag is set, we must parse an optional header extension:
 >             , hasPadding = hasPadding'
 >             , hasMarker = hasMarker'
 >             , sequenceNumber = MkSeqNum sequenceNumber'
->             , timestamp = MkRtpTimestamp timestamp'
+>             , headerTimestamp = MkRtpTimestamp timestamp'
 >             , ssrc = MkRtpSsrc ssrc'
 >             , csrcs = MkRtpSsrc <$> csrcs'
 >             , headerExtension = extension })
@@ -498,7 +514,7 @@ The second byte contains the marker and the payload type:
 The sequence number and timestamp:
 
 >   putWord16be (_fromSeqNum sequenceNumber)
->   putWord32be (_rtpTimestamp timestamp)
+>   putWord32be (_rtpTimestamp headerTimestamp)
 
 The SSRC:
 

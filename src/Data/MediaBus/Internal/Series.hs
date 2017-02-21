@@ -20,6 +20,8 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Test.QuickCheck
 import           Data.Bifunctor
+import           GHC.Generics         ( Generic )
+import           Control.DeepSeq
 
 class (SetSeriesStart s (GetSeriesStart s) ~ s) =>
       AsSeriesStart s where
@@ -53,7 +55,10 @@ instance AsSeriesNext (Either a b) where
 
 data Series a b = Next { _seriesValue :: b }
                 | Start { _seriesStartValue :: a }
-    deriving (Eq)
+    deriving (Eq, Generic)
+
+instance (NFData a, NFData b) =>
+         NFData (Series a b)
 
 instance (Show a, Show b) =>
          Show (Series a b) where

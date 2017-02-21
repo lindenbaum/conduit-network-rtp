@@ -56,7 +56,7 @@ rtpSource = foldStreamC $
     updateState rtpHeader = do
         oldCtx <- currCtx <<%=
                       ((frameCtxSeqNumRef .~ Rtp.sequenceNumber rtpHeader)
-                           . (frameCtxTimestampRef .~ Rtp.timestamp rtpHeader))
+                           . (frameCtxTimestampRef .~ Rtp.headerTimestamp rtpHeader))
         wasFirstPacket <- isFirstPacket <<.= False
         if oldCtx ^. frameCtxSourceId /= Rtp.ssrc rtpHeader
             then do
@@ -65,7 +65,7 @@ rtpSource = foldStreamC $
             else if sequenceNumbersDifferTooMuch (oldCtx ^. frameCtxSeqNumRef)
                                                  (Rtp.sequenceNumber rtpHeader) ||
                      timestampsDifferTooMuch (oldCtx ^. frameCtxTimestampRef)
-                                             (Rtp.timestamp rtpHeader) ||
+                                             (Rtp.headerTimestamp rtpHeader) ||
                      wasFirstPacket
                  then return FrameCtxChanged
                  else return FrameCtxNotChanged

@@ -7,7 +7,8 @@ module Data.MediaBus.SourceId
 import           Control.Lens
 import           Test.QuickCheck
 import           Data.Default
-
+import           GHC.Generics    ( Generic )
+import           Control.DeepSeq
 
 class SetSourceId a (GetSourceId a) ~ a =>
       HasSourceIdT a where
@@ -17,7 +18,10 @@ class SetSourceId a (GetSourceId a) ~ a =>
 -- | Things that can be uniquely identified by a looking at a (much simpler)
 -- representation, the 'identity'.
 newtype SourceId i = MkSourceId { _sourceId :: i }
-    deriving (Eq, Arbitrary, Default, Ord)
+    deriving (Eq, Arbitrary, Default, Ord, Generic)
+
+instance (NFData i) =>
+         NFData (SourceId i)
 
 makeLenses ''SourceId
 

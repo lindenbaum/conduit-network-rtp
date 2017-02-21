@@ -25,8 +25,6 @@ module Data.MediaBus.Stream
     , mapTicksC
     , mapPayloadC
     , convertTicksC
-    , type StreamSink
-    , type StreamSink'
     , foldStream
     , foldStreamM
     , concatStreamContents
@@ -47,6 +45,8 @@ import           Test.QuickCheck
 import           Data.Default
 import           Text.Printf
 import           GHC.TypeLits
+import           GHC.Generics                  ( Generic )
+import           Control.DeepSeq
 
 type SourceId' = SourceId Word32
 
@@ -58,7 +58,10 @@ data FrameCtx i s t = MkFrameCtx { _frameCtxSourceId     :: i
                                  , _frameCtxTimestampRef :: t
                                  , _frameCtxSeqNumRef    :: s
                                  }
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Generic)
+
+instance (NFData i, NFData s, NFData t) =>
+         NFData (FrameCtx i s t)
 
 type FrameCtx' r = FrameCtx SourceId' SeqNum' (Ticks' r)
 
@@ -74,6 +77,9 @@ instance HasTimestamp (FrameCtx i s t) where
 instance HasSeqNumT (FrameCtx i s t) where
     type GetSeqNum (FrameCtx i s t) = s
     type SetSeqNum (FrameCtx i s t) x = FrameCtx i x t
+
+instance HasDuration (FrameCtx i s t) where
+    getDuration _ = 0
 
 instance HasSeqNum (FrameCtx i s t) where
     seqNum = frameCtxSeqNumRef
@@ -99,7 +105,10 @@ data Frame s t c = MkFrame { _frameTimestamp :: t
                            , _frameSeqNum    :: s
                            , _framePayload   :: c
                            }
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Generic)
+
+instance (NFData c, NFData s, NFData t) =>
+         NFData (Frame s t c)
 
 deriving instance Functor (Frame s t)
 
@@ -134,13 +143,20 @@ instance (Arbitrary c, Arbitrary s, Arbitrary t) =>
          Arbitrary (Frame s t c) where
     arbitrary = MkFrame <$> arbitrary <*> arbitrary <*> arbitrary
 
+instance (Default s, Default t, Default c) =>
+         Default (Frame s t c) where
+    def = MkFrame def def def
+
 instance (Show s, Show t, Show v) =>
          Show (Frame s t v) where
     show (MkFrame ts sn v) =
         printf "FRAME: %15s | %15s | %s" (show sn) (show ts) (show v)
 
 newtype Stream i s t c = MkStream { _stream :: Streamish i s t c }
-    deriving (Ord, Eq, Arbitrary)
+    deriving (Ord, Eq, Arbitrary, Generic)
+
+instance (NFData i, NFData s, NFData t, NFData c) =>
+         NFData (Stream i s t c)
 
 type Streamish i s t c = Series (FrameCtx i s t) (Frame s t c)
 
@@ -170,6 +186,10 @@ instance HasTimestampT (Stream i s t c) where
 
 instance HasTimestamp (Stream i s t c) where
     timestamp = stream . timestamp
+
+instance (Default c, Default s, Default t) =>
+         Default (Stream i s t c) where
+    def = MkStream (Next (MkFrame def def def))
 
 instance (Show i, Show s, Show t, Show c) =>
          Show (Stream i s t c) where
@@ -226,13 +246,9 @@ convertTicksC :: forall proxy0 proxy1 m r t r' t' i s c.
               -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r' t') c)
 convertTicksC _ _ = mapTicksC convertTicks
 
-type StreamSink i s t c m r = Sink (Stream i s t c) m r
-
-type StreamSink' t c m r = StreamSink SourceId' SeqNum' (Ticks' t) c m r
-
 foldStream :: (Monoid o, Monad m)
            => (Stream i s t c -> o)
-           -> StreamSink i s t c m o
+           -> Sink (Stream i s t c) m o
 foldStream f = execWriterC $
     awaitForever $
         tell .
@@ -240,11 +256,11 @@ foldStream f = execWriterC $
 
 foldStreamM :: (Monoid o, Monad m)
             => (Stream i s t c -> m o)
-            -> StreamSink i s t c m o
+            -> Sink (Stream i s t c) m o
 foldStreamM f = execWriterC $
     awaitForever (lift . lift . f >=> tell)
 
-concatStreamContents :: (Monoid c, Monad m) => StreamSink i s t c m c
+concatStreamContents :: (Monoid c, Monad m) => Sink (Stream i s t c) m c
 concatStreamContents = foldStream (fromMaybe mempty .
                                        (^? stream .
                                                _Next .

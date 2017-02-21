@@ -37,9 +37,14 @@ import           Data.Word
 import           GHC.TypeLits
 import           Test.QuickCheck
 import           Data.Functor
+import           GHC.Generics                    ( Generic )
+import           Control.DeepSeq
 
 newtype Ticks rate w = MkTicks { _ticks :: w }
-    deriving (Eq, Real, Integral, Enum, LocalOrd, Num, Arbitrary, Default)
+    deriving (Eq, Real, Integral, Enum, LocalOrd, Num, Arbitrary, Default, Generic)
+
+instance NFData w =>
+         NFData (Ticks rate w)
 
 mkTicks :: forall proxy rate baseType.
         proxy '(rate, baseType)
@@ -146,16 +151,19 @@ timeSince t0 = do
     return (diffTime t1 t0)
 
 data UtcClock = MkUtcClock
+    deriving Generic
+
+instance NFData UtcClock
 
 useUtcClock :: Proxy UtcClock
 useUtcClock = Proxy
 
 instance IsClock UtcClock where
     newtype Time UtcClock = MkUtcTime{_utcTime :: UTCTime}
-                      deriving Eq
+                      deriving (Eq, Generic)
     newtype TimeDiff UtcClock = MkUtcTimeDiff{_utcTimeDiff ::
                                           NominalDiffTime}
-                          deriving (Ord, Eq, Num)
+                          deriving (Ord, Eq, Num, Generic)
     type MonadClock UtcClock m = MonadIO m
     now = MkUtcTime <$> liftIO getCurrentTime
     timeAsTimeDiff (MkUtcTime ref) =
@@ -165,12 +173,16 @@ instance IsClock UtcClock where
     diffTime (MkUtcTime later) (MkUtcTime sooner) =
         MkUtcTimeDiff $ diffUTCTime later sooner
 
+instance NFData (Time UtcClock)
+
 instance Show (Time UtcClock) where
     show (MkUtcTime t) = show t
 
 instance Show (TimeDiff UtcClock) where
     show (MkUtcTimeDiff t) =
         "dt:" ++ show t
+
+instance NFData (TimeDiff UtcClock)
 
 instance Default (TimeDiff UtcClock) where
     def = MkUtcTimeDiff $ fromInteger def

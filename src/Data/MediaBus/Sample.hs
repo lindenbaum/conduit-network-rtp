@@ -24,12 +24,17 @@ import           Data.MediaBus.Clock
 import           Data.MediaBus.Packetizer
 import qualified Data.ByteString                 as B
 import qualified Data.Vector.Storable.ByteString as Spool
+import           Data.Default
+import           GHC.Generics                    ( Generic )
+import           Control.DeepSeq
 
 -- | A sample is a discrete value of a continuous signal, periodically sampled
 -- at the sampling frequency. This is a full buffer of those things.
 newtype SampleBuffer sampleType =
       MkSampleBuffer { _sampleVector :: SV.Vector sampleType }
-    deriving (Eq, Monoid)
+    deriving (Eq, Monoid, Generic)
+
+instance NFData sampleType => NFData (SampleBuffer sampleType)
 
 instance (SV.Storable sampleType, Typeable sampleType, Show sampleType) =>
          Show (SampleBuffer sampleType) where
@@ -45,6 +50,10 @@ instance (SV.Storable sampleType, Typeable sampleType, Show sampleType) =>
                             if l > 10 then "" else " " ++ show samples
 
 makeLenses ''SampleBuffer
+
+instance SV.Storable sampleType =>
+         Default (SampleBuffer sampleType) where
+    def = mempty
 
 instance (HasDuration (Proxy sampleType), SV.Storable sampleType) =>
          HasDuration (SampleBuffer sampleType) where

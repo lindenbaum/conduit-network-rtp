@@ -13,3 +13,4 @@ TAGS
 *.refactored.hs
 /*.html
 src/**/*.c
+.vscode/

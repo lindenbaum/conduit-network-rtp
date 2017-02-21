@@ -48,3 +48,5 @@ class CanSplitAfterDuration a where
     -- duration and a rest. If not possible, e.g. because the input data is
     -- already shorter than the given duration, return `Nothing`.
     splitAfterDuration :: NominalDiffTime -> a -> Maybe (a, a)
+    -- TODO make the repacketization create ONLY valid sized packets, even if that means dropping content
+    -- TODO allow repacketization to combine the packets

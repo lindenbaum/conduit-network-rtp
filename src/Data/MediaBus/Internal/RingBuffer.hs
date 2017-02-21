@@ -36,10 +36,11 @@ module Data.MediaBus.Internal.RingBuffer
 import           Control.Lens
 import           Data.Array
 import           Data.Default
-import           Data.Function ( on )
-import           Data.List     ( unfoldr )
-import           Data.Typeable
+import           Data.Function   ( on )
+import           Data.List       ( unfoldr )
 import           Text.Printf
+import           GHC.Generics    ( Generic )
+import           Control.DeepSeq
 
 -- | A __bounded__ /FIFO container/ with @O(1)@ time- and space complexity back insertion
 -- ('push') and front extraction ('pop').
@@ -47,7 +48,10 @@ data RingBuffer e = MkRingBuffer { ringBuffer :: Array Int e
                                  , startIndex :: Int
                                  , size       :: Int
                                  }
-    deriving (Typeable)
+    deriving Generic
+
+instance NFData e =>
+         NFData (RingBuffer e)
 
 instance Foldable RingBuffer where
     foldr f z = foldr f z . popAll
@@ -56,20 +60,19 @@ instance Eq e =>
          Eq (RingBuffer e) where
     (==) = (==) `on` popAll
 
-instance (Typeable e, Show e) =>
+instance Show e =>
          Show (RingBuffer e) where
     show r@MkRingBuffer{ringBuffer,startIndex,size} =
-        printf "Ring buffer for up to %d elements of type: %s\n  size: %d\n  elements:\n%s\n"
+        printf "RingBuffer\n capacity: %d\n size: %d\n elements:\n%s\n"
                (capacity r)
-               (show (typeRep r))
                size
                (showElems (assocs ringBuffer))
       where
         showElems = unlines .
             map (\(k, v) -> printf "    %1s %1s %5s:  %s"
                                    (if k == r ^. endPosition
-                                         then "<" :: String
-                                         else "")
+                                    then "<" :: String
+                                    else "")
                                    (if k == startIndex
                                     then ">" :: String
                                     else "")
@@ -90,7 +93,7 @@ instance (Typeable e, Show e) =>
 -- r1 & freeFirst
 -- (r1 & freeFirst) ^. firstElement
 -- @@@
-newRingBuffer :: (Default e) => Int -> RingBuffer e
+newRingBuffer :: Default e => Int -> RingBuffer e
 newRingBuffer n = fromList (replicate n def)
 
 -- | Create an __empty__ 'RingBuffer' from a list of initial values, the length

@@ -17,9 +17,13 @@ import           Control.Lens
 import           Data.Proxy
 import           Data.Function                ( on )
 import           Test.QuickCheck              ( Arbitrary(..) )
+import           GHC.Generics                 ( Generic )
+import           Control.DeepSeq
 
 newtype ALaw = MkALaw { _alawSample :: Word8 }
-    deriving (Show, Storable, Num, Eq, Bits, Arbitrary)
+    deriving (Show, Storable, Num, Eq, Bits, Arbitrary, Generic)
+
+instance NFData ALaw
 
 makeLenses ''ALaw
 

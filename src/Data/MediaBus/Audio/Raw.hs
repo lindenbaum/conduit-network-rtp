@@ -20,9 +20,13 @@ import           Data.Typeable
 import           Data.MediaBus.Clock
 import           GHC.TypeLits
 import           Data.Function                ( on )
+import           GHC.Generics         ( Generic )
+import           Control.DeepSeq
 
 newtype S16 (rate :: Nat) = MkS16 { _s16Sample :: Int16 }
-    deriving (Typeable, Storable, Num, Eq, Ord, Arbitrary)
+    deriving (Typeable, Storable, Num, Eq, Ord, Arbitrary, Generic)
+
+instance NFData (S16 rate)
 
 instance KnownNat r =>
          HasDuration (Proxy (S16 r)) where

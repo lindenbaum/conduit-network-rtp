@@ -7,7 +7,7 @@ module Data.MediaBus.Sequence
     , Discontinous(..)
     ) where
 
-import           Test.QuickCheck                  ( Arbitrary(..) )
+import           Test.QuickCheck                 ( Arbitrary(..) )
 import           Conduit
 import           Data.MediaBus.Internal.Monotone
 import           Data.MediaBus.Internal.Series
@@ -15,6 +15,8 @@ import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Default
 import           Text.Printf
+import           GHC.Generics                    ( Generic )
+import           Control.DeepSeq
 
 class SetSeqNum t (GetSeqNum t) ~ t =>
       HasSeqNumT t where
@@ -36,7 +38,10 @@ instance (HasSeqNum a, HasSeqNum b, GetSeqNum a ~ GetSeqNum b) =>
     seqNum f (Next b) = Next <$> seqNum f b
 
 newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
-    deriving (Num, Eq, Bounded, Enum, LocalOrd, Arbitrary, Default)
+    deriving (Num, Eq, Bounded, Enum, LocalOrd, Arbitrary, Default, Generic)
+
+instance NFData s =>
+         NFData (SeqNum s)
 
 makeLenses ''SeqNum
 

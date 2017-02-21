@@ -11,9 +11,13 @@ import           Foreign.Storable
 import           Data.MediaBus.Clock
 import           Test.QuickCheck
 import           Data.Proxy
+import           GHC.Generics        ( Generic )
+import           Control.DeepSeq
 
 data ChannelLayout = SingleChannel | ChannelPair
-    deriving (Show, Eq, Ord, Enum)
+    deriving (Show, Eq, Ord, Enum, Generic)
+
+instance NFData ChannelLayout
 
 class HasChannelLayout c where
     channelLayout :: c -> ChannelLayout
@@ -21,7 +25,10 @@ class HasChannelLayout c where
 data ChannelPair a = MkChannelPair { _leftSample  :: a
                                    , _rightSample :: a
                                    }
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Generic)
+
+instance NFData a =>
+         NFData (ChannelPair a)
 
 instance Arbitrary a =>
          Arbitrary (ChannelPair a) where
