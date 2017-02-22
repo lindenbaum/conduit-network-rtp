@@ -24,6 +24,7 @@ TODO: Add RTCP support
 > import Data.MediaBus.Sample
 > import GHC.Generics         ( Generic )
 > import Control.DeepSeq
+> import System.Random
 
 The relevant output will be contained in the 'RtpPacket' and 'RtpHeader' data
 types.
@@ -50,7 +51,7 @@ timestamp of the respecitive 'RtpPayload'.
 An SSRC is basically just a 'Word32'.
 
 > newtype RtpSsrc = MkRtpSsrc { rtpSsrc :: Word32 }
->   deriving (Eq, Ord, Num, Bits, Default,Generic)
+>   deriving (Eq, Ord, Num, Bits, Default, Generic, Random)
 
 > instance NFData RtpSsrc
 

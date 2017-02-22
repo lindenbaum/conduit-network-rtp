@@ -9,6 +9,7 @@ import           Control.Parallel.Strategies       ( NFData, rdeepseq, using
                                                    , withStrategy )
 import qualified Data.Vector.Storable              as V
 import           GHC.TypeLits
+import           System.Random
 
 import           Conduit
 import           Data.MediaBus
@@ -17,10 +18,8 @@ import           Data.MediaBus.Internal.Series
 import qualified Data.MediaBus.Rtp.Packet          as Rtp
 import           Data.Word
 import           Control.Lens
-import           Control.Monad
 import           Data.Proxy
 import qualified Data.MediaBus.Internal.RingBuffer as Ring
-import           Data.Maybe
 import           Debug.Trace
 import           Text.Printf
 
@@ -60,10 +59,8 @@ main = do
                                                        (reorderFramesBySeqNumC ringCapacity) .|
                                          repacketizeC ptime .|
                                          -- dbgShowC 1 "" .|
-                                         mapInput (fromMaybe silence .
-                                                       preview payload)
-                                                  (const Nothing)
-                                                  (tvarRingBufferSink ringRef)))
+                                         tvarRingBufferSinkTraversal payload
+                                                                     ringRef))
                      (runConduitRes (tvarRingBufferSource (0.5 * ptime *
                                                                fromIntegral ringCapacity)
                                                           silence
@@ -73,21 +70,50 @@ main = do
                                                              streamDebugPlaybackSink))
 
 --  TODO create a gap detection mechanism, a simple stateful conduit that knows the next timestamp
-tvarRingBufferSink :: MonadIO m => TVar (Ring.RingBuffer a) -> Sink a m ()
-tvarRingBufferSink ringRef =
-    awaitForever (liftIO .
-                      atomically .
-                          modifyTVar ringRef . withStrategy rdeepseq . Ring.push)
+tvarRingBufferSinkTraversal :: MonadIO m
+                            => Traversal' s a
+                            -> TVar (Ring.RingBuffer a)
+                            -> Sink s m ()
+tvarRingBufferSinkTraversal trav ringRef =
+    awaitForever go
+  where
+    go x = maybe (return ()) pushInRing (x ^? trav)
+      where
+        pushInRing = liftIO .
+            atomically . modifyTVar ringRef . withStrategy rdeepseq . Ring.push
 
-tvarRingBufferSource :: (NFData c, Num i, HasDuration c, MonadIO m, KnownNat r, Integral t, Integral s)
+tvarRingBufferSource :: (NFData c, Random i, HasDuration c, MonadIO m, KnownNat r, Integral t, Integral s, Random t, Random s)
                      => NominalDiffTime
                      -> c
                      -> TVar (Ring.RingBuffer c)
                      -> Source m (Stream i s (Ticks r t) c)
 tvarRingBufferSource pollInterval silence ringRef =
-    let pollIntervalMicros :: Ticks 1000000 Int
-        pollIntervalMicros = nominalDiffTime # pollInterval
-        -- TODO: totally recreate the sequence numbers and timestamps!
+    evalStateC (0, 0) $ do
+        setRandomStartCtx
+        yieldStart
+        forever (pollNextBuffers >>= mapM_ yieldNextBuffer)
+  where
+    setRandomStartCtx = do
+        ts0 <- liftIO randomIO
+        sn0 <- liftIO randomIO
+        put (ts0, sn0)
+
+    yieldStart = MkFrameCtx <$> liftIO randomIO <*> use _1 <*> use _2 >>=
+        yield . MkStream . Start
+
+    pollNextBuffers = liftIO $ do
+        threadDelay (_ticks pollIntervalMicros)
+        atomically $ do
+            !ring <- readTVar ringRef
+            let (!bufs, !ring') = popFromRingPollInterval 0
+                                                          []
+                                                          ring
+                                                          (Ring.size ring ==
+                                                               0)
+                    `using` rdeepseq
+            writeTVar ringRef ring'
+            return bufs
+      where
         popFromRingPollInterval duration acc ring underflow =
             if duration >= pollInterval
             then (reverse acc, ring)
@@ -103,32 +129,17 @@ tvarRingBufferSource pollInterval silence ringRef =
                                (buf : acc)
                                ring'
                                underflow'
-    in
-        (do
-             yield (MkStream (Start (MkFrameCtx 0 0 0)))
-             forever (liftIO (do
-                                  threadDelay (_ticks pollIntervalMicros)
-                                  atomically $ do
-                                      !ring <- readTVar ringRef
-                                      let (!frms, !ring') = popFromRingPollInterval 0
-                                                                                    []
-                                                                                    ring
-                                                                                    (Ring.size ring ==
-                                                                                         0)
-                                              `using` rdeepseq
-                                      writeTVar ringRef ring'
-                                      return frms)
-                          >>= Control.Monad.mapM_ (yield .
-                                                       MkStream .
-                                                           Next . MkFrame 0 0)))
-            .| synchronizeToSeqNum 0
-            .| evalStateC 0
-                          (mapMC (\ !frm -> do
-                                      let !frmDur = nominalDiffTime #
-                                              getDuration frm
-                                      !ts <- get
-                                      put (ts + frmDur)
-                                      return (frm & timestamp .~ ts)))
+
+        pollIntervalMicros :: Ticks 1000000 Int
+        pollIntervalMicros = nominalDiffTime # pollInterval
+
+    yieldNextBuffer buf = do
+        ts <- _1 <<+= nominalDiffTime # getDuration buf
+        sn <- _2 <<+= 1
+        yield $
+            MkStream $
+                Next $
+                    MkFrame ts sn buf
 
 _receiveRtpFromUDPStreamType :: Proxy (Stream Rtp.RtpSsrc Rtp.RtpSeqNum DemoTicks (SampleBuffer (S16 DemoRate)))
 _receiveRtpFromUDPStreamType =

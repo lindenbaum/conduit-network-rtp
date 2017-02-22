@@ -17,6 +17,7 @@ import           Data.Default
 import           Text.Printf
 import           GHC.Generics                    ( Generic )
 import           Control.DeepSeq
+import           System.Random
 
 class SetSeqNum t (GetSeqNum t) ~ t =>
       HasSeqNumT t where
@@ -38,7 +39,7 @@ instance (HasSeqNum a, HasSeqNum b, GetSeqNum a ~ GetSeqNum b) =>
     seqNum f (Next b) = Next <$> seqNum f b
 
 newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
-    deriving (Num, Eq, Bounded, Enum, LocalOrd, Arbitrary, Default, Generic)
+    deriving (Num, Eq, Bounded, Enum, LocalOrd, Arbitrary, Default, Generic, Random)
 
 instance NFData s =>
          NFData (SeqNum s)

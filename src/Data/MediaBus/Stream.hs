@@ -208,6 +208,7 @@ overStreamC :: Monad m
             -> Conduit (Stream i s t c) m (Stream i' s' t' c')
 overStreamC = mapInput _stream (Just . MkStream) . mapOutput MkStream
 
+
 overFramesC :: (Default i, Monad m)
             => (StartingFrom (FrameCtx i s t)
                 -> Conduit (Frame s t from) m (Frame s t to))

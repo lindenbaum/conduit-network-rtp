@@ -19,7 +19,6 @@ module Data.MediaBus.Clock
     , _utcTimeDiff
     , _utcTime
     , utcTimeDiff
-    , overwriteTimeInSeries
     ) where
 
 import           Conduit
@@ -39,9 +38,10 @@ import           Test.QuickCheck
 import           Data.Functor
 import           GHC.Generics                    ( Generic )
 import           Control.DeepSeq
+import           System.Random
 
 newtype Ticks rate w = MkTicks { _ticks :: w }
-    deriving (Eq, Real, Integral, Enum, LocalOrd, Num, Arbitrary, Default, Generic)
+    deriving (Eq, Real, Integral, Enum, LocalOrd, Num, Arbitrary, Default, Generic, Random)
 
 instance NFData w =>
          NFData (Ticks rate w)
@@ -202,18 +202,3 @@ instance LocalOrd (TimeDiff UtcClock) where
       where
         roundToSeconds = round . (/ 1000000000000) . _utcTimeDiff
         roundToSeconds :: TimeDiff UtcClock -> Word64
-
-overwriteTimeInSeries :: (HasTimestamp a, HasTimestamp b, GetTimestamp b ~ TimeDiff c, GetTimestamp a ~ TimeDiff c, Monad m, IsClock c, MonadClock c m, AsSeries ser a b)
-                      => proxy c
-                      -> Conduit ser m ser
-overwriteTimeInSeries _ = do
-    tStart0 <- lift now
-    evalStateC tStart0 (awaitForever wrapTime)
-  where
-    wrapTime ser = do
-        tStart <- get
-        tNow <- lift (lift now)
-        ser' <- mapMOf (seriesStart' . timestamp')
-                       (const (put tNow $> timeAsTimeDiff tNow))
-                       ser
-        yield (set (seriesNext' . timestamp') (diffTime tNow tStart) ser')
