@@ -4,6 +4,7 @@ module Data.MediaBus.Internal.Conduit
     , annotateTypeC
     , annotateTypeSink
     , annotateTypeSource
+    , debugExitAfter
     , dbgShowC
     , dbgShowSink
     ) where
@@ -50,6 +51,10 @@ annotateTypeSource _ = id
 
 annotateTypeSink :: proxy a -> Sink a m r -> Sink a m r
 annotateTypeSink _ = id
+
+debugExitAfter :: Monad m => Int -> Conduit a m a
+debugExitAfter 0 = return ()
+debugExitAfter n = await >>= maybe (return ()) (yield >=> const (debugExitAfter (n - 1)))
 
 dbgShowC :: (Show a, Monad m) => Double -> String -> Conduit a m a
 dbgShowC probability msg =

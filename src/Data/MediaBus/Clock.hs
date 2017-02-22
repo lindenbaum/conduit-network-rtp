@@ -35,7 +35,6 @@ import           Data.Time.Clock
 import           Data.Word
 import           GHC.TypeLits
 import           Test.QuickCheck
-import           Data.Functor
 import           GHC.Generics                    ( Generic )
 import           Control.DeepSeq
 import           System.Random

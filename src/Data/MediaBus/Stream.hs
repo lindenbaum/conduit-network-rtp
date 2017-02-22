@@ -21,10 +21,13 @@ module Data.MediaBus.Stream
     , overStreamC
     , overFramesC
     , mapFramesC
+    , mapFramesC'
     , mapSeqNumC
     , mapTicksC
+    , mapTicksC'
     , mapPayloadC
-    , convertTicksC
+    , mapPayloadC'
+    , convertTicksC'
     , foldStream
     , foldStreamM
     , concatStreamContents
@@ -46,7 +49,7 @@ import           Data.Default
 import           Text.Printf
 import           GHC.TypeLits
 import           GHC.Generics                  ( Generic )
-import           Control.DeepSeq
+import           Control.Parallel.Strategies   ( NFData, rdeepseq, withStrategy )
 
 type SourceId' = SourceId Word32
 
@@ -208,7 +211,6 @@ overStreamC :: Monad m
             -> Conduit (Stream i s t c) m (Stream i' s' t' c')
 overStreamC = mapInput _stream (Just . MkStream) . mapOutput MkStream
 
-
 overFramesC :: (Default i, Monad m)
             => (StartingFrom (FrameCtx i s t)
                 -> Conduit (Frame s t from) m (Frame s t to))
@@ -219,6 +221,12 @@ overFramesC f = overStreamC process
       where
         toInitialCtx (MkFrame s t _) =
             MkFrameCtx def s t
+
+mapFramesC' :: (NFData i, NFData s, NFData t, NFData c', Monad m)
+            => (Frame s t c -> m (Frame s t c'))
+            -> Conduit (Stream i s t c) m (Stream i s t c')
+mapFramesC' f = mapMC (mapMOf (stream . _Next) f >=>
+                           return . withStrategy rdeepseq)
 
 mapFramesC :: Monad m
            => (Frame s t c -> m (Frame s t c'))
@@ -235,17 +243,27 @@ mapTicksC :: Monad m
           -> Conduit (Stream i s t c) m (Stream i s t' c)
 mapTicksC = mapC . over timestamp
 
+mapTicksC' :: (NFData t, Monad m)
+           => (t -> t')
+           -> Conduit (Stream i s t c) m (Stream i s t' c)
+mapTicksC' = mapC . withStrategy rdeepseq . over timestamp
+
 mapPayloadC :: Monad m
             => (c -> m c')
             -> Conduit (Stream i s t c) m (Stream i s t c')
 mapPayloadC = mapMC . mapMOf payload
 
-convertTicksC :: forall proxy0 proxy1 m r t r' t' i s c.
-              (KnownNat r, KnownNat r', Integral t, Integral t', Monad m)
+mapPayloadC' :: (NFData (Stream i s t c'), Monad m)
+             => (c -> m c')
+             -> Conduit (Stream i s t c) m (Stream i s t c')
+mapPayloadC' f = mapMC (mapMOf payload f >=> return . withStrategy rdeepseq)
+
+convertTicksC' :: forall proxy0 proxy1 m r t r' t' i s c.
+              (NFData t, NFData t', KnownNat r, KnownNat r', Integral t, Integral t', Monad m, NFData t')
               => proxy0 '(r, t)
               -> proxy1 '(r', t')
               -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r' t') c)
-convertTicksC _ _ = mapTicksC convertTicks
+convertTicksC' _ _ = mapTicksC' convertTicks
 
 foldStream :: (Monoid o, Monad m)
            => (Stream i s t c -> o)

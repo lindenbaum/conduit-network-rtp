@@ -1,11 +1,12 @@
 module Data.MediaBus.Transcoder
     ( Transcoder(..)
-    , transcodeStreamC
+    , transcodeStreamC'
     ) where
 
 import           Conduit
 import           Data.MediaBus.Stream
 import           Data.Kind
+import           Control.Parallel.Strategies ( NFData )
 
 class Transcoder from to where
     type TranscodingM from to (m :: Type -> Type) :: Constraint
@@ -18,6 +19,6 @@ class Transcoder from to where
               => Frame s t from
               -> m (Frame s t to)
 
-transcodeStreamC :: (Monad m, Transcoder from to, TranscodingM from to m, TranscodingSeqNum from to s, TranscodingTicks from to t)
+transcodeStreamC' :: (NFData to, NFData i, NFData s, NFData t, Monad m, Transcoder from to, TranscodingM from to m, TranscodingSeqNum from to s, TranscodingTicks from to t)
                  => Conduit (Stream i s t from) m (Stream i s t to)
-transcodeStreamC = mapFramesC transcode
+transcodeStreamC' = mapFramesC' transcode

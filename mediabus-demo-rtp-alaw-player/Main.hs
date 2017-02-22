@@ -43,7 +43,7 @@ main = do
                                               (MkS16 0))
     ringRef <- newTVarIO (Ring.newRingBuffer ringCapacity `using` rdeepseq)
     void $
-        concurrently (runConduitRes (udpDatagramSource useUtcClock
+        race (runConduitRes (udpDatagramSource useUtcClock
                                                        10000
                                                        "127.0.0.1" .|
                                          rtpSource .|
@@ -52,9 +52,9 @@ main = do
                                                            )
                                                          ]
                                                          mempty .|
-                                         transcodeStreamC .|
-                                         resample8to16kHz (MkS16 0 :: S16 8000) .|
-                                         convertTicksC at8kHzU32 at16kHzU64 .|
+                                         transcodeStreamC' .|
+                                         resample8to16kHz' (MkS16 0 :: S16 8000) .|
+                                         convertTicksC' at8kHzU32 at16kHzU64 .|
                                          annotateTypeC _receiveRtpFromUDPStreamType
                                                        (reorderFramesBySeqNumC ringCapacity) .|
                                          repacketizeC ptime .|
@@ -66,6 +66,7 @@ main = do
                                                           silence
                                                           ringRef
                                          -- .| dbgShowC 1 ""
+                                         .| debugExitAfter 1000
                                          .| annotateTypeSink _receiveRtpFromUDPStreamType
                                                              streamDebugPlaybackSink))
 

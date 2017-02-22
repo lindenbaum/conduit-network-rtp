@@ -19,6 +19,8 @@ import           Data.Function                ( on )
 import           Test.QuickCheck              ( Arbitrary(..) )
 import           GHC.Generics                 ( Generic )
 import           Control.DeepSeq
+import           Control.Parallel.Strategies       ( NFData, rdeepseq
+                                                   , withStrategy )
 
 newtype ALaw = MkALaw { _alawSample :: Word8 }
     deriving (Show, Storable, Num, Eq, Bits, Arbitrary, Generic)
@@ -38,18 +40,18 @@ instance HasChannelLayout ALaw where
 
 instance Transcoder (SampleBuffer ALaw) (SampleBuffer (S16 8000)) where
     transcode = return .
-        over (framePayload . eachSample)
-             (MkS16 . decodeALawSample . _alawSample)
+            over (framePayload . eachSample)
+                 (withStrategy rdeepseq . MkS16 . decodeALawSample . _alawSample)
 
 instance Transcoder (SampleBuffer (S16 8000)) (SampleBuffer ALaw) where
     transcode = return .
-        over (framePayload . eachSample)
-             (MkALaw . encodeALawSample . _s16Sample)
+            over (framePayload . eachSample)
+                 (withStrategy rdeepseq . MkALaw . encodeALawSample . _s16Sample)
 
 instance IsAudioSample ALaw where
     type GetAudioSampleRate ALaw = 8000
     type SetAudioSampleRate ALaw x = ALaw
-    avgSamples x y = MkALaw .
+    avgSamples !x !y = MkALaw .
         encodeALawSample .
             _s16Sample $
         (avgSamples `on` (mkS16 . decodeALawSample . _alawSample)) x y

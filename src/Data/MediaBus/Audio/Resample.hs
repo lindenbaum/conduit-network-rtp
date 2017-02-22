@@ -1,6 +1,5 @@
 module Data.MediaBus.Audio.Resample
     ( resample8to16kHz'
-    , resample8to16kHz
     ) where
 
 import           Data.MediaBus.Stream
@@ -14,15 +13,12 @@ import           Control.Monad.State.Strict
 import           Control.Lens
 import           Data.Default
 import           GHC.TypeLits
+import           Control.Parallel.Strategies  ( NFData )
 
-resample8to16kHz' :: (IsAudioSample sa, GetAudioSampleRate sa ~ r, IsAudioSample (SetAudioSampleRate sa (r + r)), Monad m, KnownNat (r + r), Default sa)
-                  => Conduit (Stream' t (SampleBuffer sa)) m (Stream' t (SampleBuffer (SetAudioSampleRate sa (r + r))))
-resample8to16kHz' = resample8to16kHz def
-
-resample8to16kHz :: (IsAudioSample sa, GetAudioSampleRate sa ~ r, Monad m, IsAudioSample (SetAudioSampleRate sa (r + r)), KnownNat (r + r))
+resample8to16kHz' :: (NFData s, NFData t, NFData i, IsAudioSample sa, GetAudioSampleRate sa ~ r, Monad m, IsAudioSample (SetAudioSampleRate sa (r + r)), KnownNat (r + r), NFData (SetAudioSampleRate sa (r + r)))
                  => sa
                  -> Conduit (Stream i s t (SampleBuffer sa)) m (Stream i s t (SampleBuffer (SetAudioSampleRate sa (r + r))))
-resample8to16kHz sa = evalStateC sa (mapPayloadC resample)
+resample8to16kHz' sa = evalStateC sa (mapPayloadC' resample)
   where
     resample sb
         | sampleCount sb == 0 = return (MkSampleBuffer mempty)

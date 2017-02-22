@@ -38,7 +38,7 @@ resampleAndConsume :: Source Identity (Stream' 48000 (SampleBuffer (S16 8000)))
                    -> SampleBuffer (S16 16000)
 resampleAndConsume vvv lastVal =
     runConduitPure (vvv .|
-                        resample8to16kHz lastVal .|
+                        resample8to16kHz' lastVal .|
                         concatStreamContents)
 
 singleFrameFromList :: Monad m
