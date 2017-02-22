@@ -40,7 +40,7 @@ main = do
         ptimeTicks :: DemoTicks
         ptimeTicks = nominalDiffTime # ptime
         ringCapacity = 10
-        silence = MkSampleBuffer (V.replicate (fromIntegral (_ticks ptimeTicks))
+        silence = MkSampleBuffer (V.replicate (fromIntegral (_ticks ptimeTicks)) -- TODO extract type class for silence
                                               (MkS16 0))
     ringRef <- newTVarIO (Ring.newRingBuffer ringCapacity `using` rdeepseq)
     void $
@@ -54,8 +54,8 @@ main = do
                                                          ]
                                                          mempty .|
                                          transcodeStreamC .|
-                                         -- resample8to16kHz (MkS16 0 :: S16 8000) .|
-                                         -- convertTicksC at8kHzU32 at16kHzU64 .|
+                                         resample8to16kHz (MkS16 0 :: S16 8000) .|
+                                         convertTicksC at8kHzU32 at16kHzU64 .|
                                          annotateTypeC _receiveRtpFromUDPStreamType
                                                        (reorderFramesBySeqNumC ringCapacity) .|
                                          repacketizeC ptime .|
@@ -136,4 +136,4 @@ _receiveRtpFromUDPStreamType =
 
 type DemoTicks = Ticks DemoRate Word64
 
-type DemoRate = 8000
+type DemoRate = 16000
