@@ -16,7 +16,7 @@ module Data.MediaBus.Sample
 
 import           Control.Lens
 import qualified Data.Vector.Storable            as SV
-import           Data.Vector.Storable.Mutable    as M ( MVector(..) )
+import           Data.Vector.Storable.Mutable    as M
 import           Control.Monad.ST                ( ST, runST )
 import           GHC.Exts                        ( IsList(..) )
 import           Data.Typeable
@@ -63,15 +63,15 @@ instance (HasDuration (Proxy sampleType), SV.Storable sampleType) =>
 
 instance (SV.Storable a, HasDuration (Proxy a)) =>
          CanSplitAfterDuration (SampleBuffer a) where
-    splitAfterDuration tPacket buf@(MkSampleBuffer bufV)
+    splitAfterDuration !tPacket buf@(MkSampleBuffer !bufV)
         | getDuration buf > tPacket =
-              let (nextPacket, rest) = SV.splitAt n bufV
+              let (!nextPacket, !rest) = SV.splitAt n bufV
               in
-                  Just (MkSampleBuffer nextPacket, MkSampleBuffer rest)
+                  Just (MkSampleBuffer (SV.force nextPacket), MkSampleBuffer rest)
         | otherwise = Nothing
       where
-        n = ceiling (tPacket / tSample)
-        tSample = getDuration (Proxy :: Proxy a)
+        !n = ceiling (tPacket / tSample)
+        !tSample = getDuration (Proxy :: Proxy a)
 
 instance SV.Storable s =>
          IsList (SampleBuffer s) where
@@ -99,7 +99,7 @@ createSampleBufferFrom :: (SV.Storable sample')
                        -> SampleBuffer sample
                        -> SampleBuffer sample'
 createSampleBufferFrom f =
-    over sampleVector (\v -> SV.create (f v))
+    over sampleVector (\ !v -> SV.create (f v))
 
 -- | A type class for media formats, like encodings, sample rate, etc...
 class (SV.Storable (GetSampleType s), SetSampleType s (GetSampleType s) ~ s) =>
@@ -109,7 +109,6 @@ class (SV.Storable (GetSampleType s), SetSampleType s (GetSampleType s) ~ s) =>
     sampleCount :: s -> Int
     eachSample :: SV.Storable t
                => Traversal s (SetSampleType s t) (GetSampleType s) t
-    eachSample = sampleBuffer . sampleVector . each
     sampleBuffer :: SV.Storable t
                  => Lens s (SetSampleType s t) (SampleBuffer (GetSampleType s)) (SampleBuffer t)
 
@@ -120,7 +119,7 @@ instance SV.Storable a =>
     type GetSampleType (SampleBuffer a) = a
     type SetSampleType (SampleBuffer a) t = SampleBuffer t
     sampleCount = SV.length . _sampleVector
-    eachSample = sampleVector . each
+    eachSample = sampleBuffer . sampleVector . each
     sampleBuffer = lens id (flip const)
 
 mutateSamples :: SV.Storable a
@@ -135,9 +134,9 @@ unsafeMutateSamples :: SV.Storable a
                     => (forall s. M.MVector s a -> ST s r)
                     -> SampleBuffer a
                     -> (r, SampleBuffer a)
-unsafeMutateSamples f (MkSampleBuffer v) =
+unsafeMutateSamples f (MkSampleBuffer !v) =
     runST $ do
-        mv <- SV.unsafeThaw v
-        r <- f mv
-        v' <- SV.unsafeFreeze mv
+        !mv <- SV.unsafeThaw v
+        !r <- f mv
+        !v' <- SV.unsafeFreeze mv
         return (r, MkSampleBuffer v')

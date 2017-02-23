@@ -18,6 +18,7 @@ import           Control.Monad.IO.Class
 import           Data.Proxy
 import           Text.Printf
 import           GHC.TypeLits
+import           Data.Default
 
 class HasDebugPlaybackSink s t c where
     debugPlaybackSink :: MonadIO m => Sink (Frame s t c) m ()
@@ -36,7 +37,7 @@ instance KnownNat r =>
         pcmToByteString !h (MkFrame _ _ !d) =
             liftIO (B.hPut h (byteStringFromSampleBuffer d))
 
-streamDebugPlaybackSink :: (HasDebugPlaybackSink s t c, MonadIO m)
+streamDebugPlaybackSink :: (Default i, HasDebugPlaybackSink s t c, MonadIO m)
                         => Sink (Stream i s t c) m ()
 streamDebugPlaybackSink =
     foldStreamC $ \(MkStartingFrom _) -> debugPlaybackSink

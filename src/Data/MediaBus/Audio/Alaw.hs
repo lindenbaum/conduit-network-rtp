@@ -18,7 +18,6 @@ import           Data.Proxy
 import           Data.Function                ( on )
 import           Test.QuickCheck              ( Arbitrary(..) )
 import           GHC.Generics                 ( Generic )
-import           Control.DeepSeq
 import           Control.Parallel.Strategies       ( NFData, rdeepseq
                                                    , withStrategy )
 
@@ -39,12 +38,12 @@ instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel
 
 instance Transcoder (SampleBuffer ALaw) (SampleBuffer (S16 8000)) where
-    transcode = return .
+    transcode =
             over (framePayload . eachSample)
                  (withStrategy rdeepseq . MkS16 . decodeALawSample . _alawSample)
 
 instance Transcoder (SampleBuffer (S16 8000)) (SampleBuffer ALaw) where
-    transcode = return .
+    transcode =
             over (framePayload . eachSample)
                  (withStrategy rdeepseq . MkALaw . encodeALawSample . _s16Sample)
 

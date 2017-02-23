@@ -17,7 +17,6 @@ module Data.MediaBus.Internal.Series
 import           Control.Lens
 import           Conduit
 import           Control.Monad.Reader
-import           Control.Monad.State
 import           Test.QuickCheck
 import           Data.Bifunctor
 import           GHC.Generics         ( Generic )
@@ -53,8 +52,8 @@ instance AsSeriesNext (Either a b) where
     type SetSeriesNext (Either a b) n = (Either a n)
     seriesNext = _Right
 
-data Series a b = Next { _seriesValue :: b }
-                | Start { _seriesStartValue :: a }
+data Series a b = Next { _seriesValue :: !b }
+                | Start { _seriesStartValue :: !a }
     deriving (Eq, Generic)
 
 instance (NFData a, NFData b) =>
@@ -62,12 +61,12 @@ instance (NFData a, NFData b) =>
 
 instance (Show a, Show b) =>
          Show (Series a b) where
-    show (Start x) = "(START: " ++ show x ++ ")"
-    show (Next x) = show x
+    show (Start !x) = "(START: " ++ show x ++ ")"
+    show (Next !x) = show x
 
 instance (Ord a, Ord b) =>
          Ord (Series a b) where
-    compare (Next l) (Next r) =
+    compare (Next !l) (Next !r) =
         compare l r
     compare _ _ = EQ
 
@@ -111,7 +110,7 @@ makeLenses ''StartingFrom
 
 instance Show a =>
          Show (StartingFrom a) where
-    show (MkStartingFrom x) =
+    show (MkStartingFrom !x) =
         "(STARTING-FROM: " ++ show x ++ ")"
 
 -- | Fold all 'Next' values using a stateful conduit, which is /restarted/
@@ -119,49 +118,30 @@ instance Show a =>
 --
 -- NOTE: Up to the first 'Start' value, all input is discarded.
 foldSeriesC :: Monad m
-            => (StartingFrom a -> Conduit b m c)
+            => (b -> a)
+            -> (StartingFrom a -> Conduit b m c)
             -> Conduit (Series a b) m c
-foldSeriesC f = awaitForever awaitStart
+foldSeriesC !fInitialStart !f = awaitForever awaitStart
   where
-    awaitStart (Next _) = return ()
-    awaitStart (Start a) = goNext .| f (MkStartingFrom a)
+    awaitStart (Next !b) = do
+      leftover (Next b)
+      awaitStart (Start (fInitialStart b))
+    awaitStart (Start !a) = goNext .| f (MkStartingFrom a)
     goNext = do
-        mb <- await
+        !mb <- await
         case mb of
-            Just (Next b) -> yield b >> goNext
-            Just (Start a) -> leftover (Start a)
+            Just (Next !b) -> yield b >> goNext
+            Just (Start !a) -> leftover (Start a)
             Nothing -> return ()
 
 overSeriesC' :: Monad m
              => (b -> a)
              -> (StartingFrom a -> ConduitM b c m ())
              -> Conduit (Series a b) m (Series a c)
-overSeriesC' fInitialStart fc =
-    evalStateC Nothing (await >>= maybe (return ()) starts)
-  where
-    starts (Next x) = do
-        let r = fInitialStart x
-        -- yield (Start r) -- TODO should we fake a 'Start' event?
-        (yield x >> nexts) .|
-            runNested r
-        restart
-    starts (Start r) = do
-        yield (Start r)
-        nexts .| runNested r
-        restart
-    restart = do
-        mS <- get
-        put Nothing
-        case mS of
-            Just s -> starts s
-            Nothing -> return ()
-    nexts = do
-        mx <- await
-        case mx of
-            Just (Next x) -> yield x >> nexts
-            o -> put o
-    runNested initarg = transPipe lift
-                                  (mapOutput Next (fc (MkStartingFrom initarg)))
+overSeriesC' !fInitialStart !fc =
+  foldSeriesC fInitialStart (\ sa@(MkStartingFrom !a) -> do
+                               yield (Start a)
+                               mapOutput Next (fc sa))
 
 overSeriesC :: Monad m
             => a
@@ -170,10 +150,10 @@ overSeriesC :: Monad m
 overSeriesC initialA = overSeriesC' (const initialA)
 
 monotoneSeriesC :: Monad m => m a -> (i -> m b) -> Conduit i m (Series a b)
-monotoneSeriesC initSeries continueSeries = do
-    rStart <- lift initSeries
+monotoneSeriesC !initSeries !continueSeries = do
+    !rStart <- lift initSeries
     yield (Start rStart)
-    mi <- await
+    !mi <- await
     mapM_ (lift . continueSeries >=>
                yield . Next >=>
                    const (awaitForever (lift . continueSeries >=> yield . Next)))

@@ -21,24 +21,24 @@ import           Control.Lens
 repacketizeC :: (Num s, Monad m, HasDuration c, CanSplitAfterDuration c, Default i, KnownNat r, Integral t)
              => NominalDiffTime
              -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r t) c)
-repacketizeC packetDuration =
+repacketizeC !packetDuration =
     overFramesC go
   where
     go _ = evalStateC 0 (awaitForever handleFrames)
-    handleFrames (MkFrame t s cIn) =
+    handleFrames (MkFrame !t !s !cIn) =
         yieldLoop cIn 0
       where
-        yieldLoop c timeOffset =
+        yieldLoop !c !timeOffset =
             case splitAfterDuration packetDuration c of
-                Just (packet, rest) -> do
+                Just (!packet, !rest) -> do
                     yieldWithAdaptedSeqNumAndTimestamp packet
                     modify (+ 1)
                     let packetDurationInTicks = nominalDiffTime # getDuration packet
                     yieldLoop rest (timeOffset + packetDurationInTicks)
                 Nothing -> yieldWithAdaptedSeqNumAndTimestamp c
           where
-            yieldWithAdaptedSeqNumAndTimestamp p = do
-                seqNumOffset <- get
+            yieldWithAdaptedSeqNumAndTimestamp !p = do
+                !seqNumOffset <- get
                 yield (MkFrame (t + timeOffset) (s + seqNumOffset) p)
 
 -- | Class of types that support splitting of from the front a packet containing

@@ -4,12 +4,14 @@ import           Conduit
 import           Data.Conduit.List
 import           Data.MediaBus
 import           Data.MediaBus.Internal.Series
+import           Data.MediaBus.Internal.Conduit
 import           Test.Hspec
-import qualified Data.MediaBus.Rtp.Packet          as Rtp
-import qualified Data.ByteString                   as B
+import qualified Data.MediaBus.Rtp.Packet       as Rtp
+import qualified Data.ByteString                as B
 import           Data.Word
 import           Control.Lens
 import           Control.Monad
+import           Data.Proxy
 
 spec :: Spec
 spec = rtpSourceSpec >> rtpPayloadDemuxSpec
@@ -22,7 +24,8 @@ rtpSourceSpec = describe "rtpSource" $ do
                                  Next _ -> n)
                             0
         runTestConduit inputs = runConduitPure (sourceList inputs .|
-                                                    rtpSource .|
+                                                    annotateTypeCIn (Proxy :: Proxy (Stream Int Int Int B.ByteString))
+                                                                     rtpSource .|
                                                     consume)
 
     it "yields 'Start' when only when the first payload packet arrives" $
@@ -151,7 +154,7 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
             outs = preview payload <$> runTestConduit inputs
                                                       [ ( Rtp.MkRtpPayloadType 129
                                                         , alawPayloadHandler >=>
-                                                            transcode
+                                                            return . transcode
                                                         )
                                                       ]
                                                       fallback

@@ -197,7 +197,3 @@ runRingOps ops ringBuffer =
         push e intermediateRingBuffer
     applyOp (Left _) intermediateRingBuffer =
         pop_ intermediateRingBuffer
-
-instance Arbitrary e =>
-         Arbitrary (First e) where
-    arbitrary = First <$> arbitrary

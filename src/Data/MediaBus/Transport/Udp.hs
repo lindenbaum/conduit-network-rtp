@@ -21,28 +21,28 @@ udpDatagramSource :: (IsClock c, MonadClock c m, MonadResource m, Num s)
                   => proxy c
                   -> Int
                   -> HostPreference
-                  -> Source m (Stream (SourceId SockAddr) (SeqNum s) (TimeDiff c) B.ByteString)
-udpDatagramSource _clk port host = do
-    t0 <- lift now
+                  -> Source m (Stream (SourceId (Maybe SockAddr)) (SeqNum s) (TimeDiff c) B.ByteString)
+udpDatagramSource _clk !port !host = do
+    !t0 <- lift now
     bracketP (bindPortUDP port host) close (`sourceSocket` 1024) .|
         evalStateC (Nothing, 0, t0) (awaitForever createFrame)
   where
-    createFrame m      -- TODO use foldSeriesC here
+    createFrame !m      -- TODO use foldSeriesC here
      = do
-        let currentSender = msgSender m
-        lastSender <- _1 <<.= Just currentSender
-        tNow <- lift (lift now)
+        let !currentSender = msgSender m
+        !lastSender <- _1 <<.= Just currentSender
+        !tNow <- lift (lift now)
         when (Just currentSender /= lastSender) $ do
             _2 .= 0
             _3 .= tNow
-            yield (MkStream (Start (MkFrameCtx (MkSourceId currentSender)
+            yield (MkStream (Start (MkFrameCtx (MkSourceId (Just currentSender))
                                                (timeAsTimeDiff tNow)
                                                0)))
-        sn <- _2 <<+= 1
-        tStart <- use _3
+        !sn <- _2 <<+= 1
+        !tStart <- use _3
         yield (MkStream (Next (MkFrame (diffTime tNow tStart) sn (msgData m))))
 
-_receiveFromUDP :: IO [(Stream (SourceId SockAddr) (SeqNum Word64) (TimeDiff UtcClock) B.ByteString)]
+_receiveFromUDP :: IO [(Stream (SourceId (Maybe SockAddr)) (SeqNum Word64) (TimeDiff UtcClock) B.ByteString)]
 _receiveFromUDP = runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
                                      --    rtpSource .|
                                      dbgShowSink 1

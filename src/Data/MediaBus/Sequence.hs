@@ -35,8 +35,8 @@ instance (HasSeqNumT a, HasSeqNumT b, GetSeqNum a ~ GetSeqNum b) =>
 
 instance (HasSeqNum a, HasSeqNum b, GetSeqNum a ~ GetSeqNum b) =>
          HasSeqNum (Series a b) where
-    seqNum f (Start a) = Start <$> seqNum f a
-    seqNum f (Next b) = Next <$> seqNum f b
+    seqNum f (Start !a) = Start <$> seqNum f a
+    seqNum f (Next !b) = Next <$> seqNum f b
 
 newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
     deriving (Num, Eq, Bounded, Enum, LocalOrd, Arbitrary, Default, Generic, Random)
@@ -59,7 +59,7 @@ instance Show s =>
 
 instance (Eq a, LocalOrd a) =>
          Ord (SeqNum a) where
-    compare x y
+    compare !x !y
         | x == y = EQ
         | x `succeeds` y = GT
         | otherwise = LT
@@ -76,8 +76,8 @@ synchronizeToSeqNum :: (HasSeqNum a, Monad m, Integral i)
 synchronizeToSeqNum startSeq =
     evalStateC startSeq (awaitForever yieldSeq)
   where
-    yieldSeq a = do
-        nextSeq <- get
+    yieldSeq !a = do
+        !nextSeq <- get
         modify (+ 1)
         yield (a & seqNum .~ nextSeq)
 

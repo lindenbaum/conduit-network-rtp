@@ -43,45 +43,40 @@ main = do
                                               (MkS16 0))
     ringRef <- newTVarIO (Ring.newRingBuffer ringCapacity `using` rdeepseq)
     void $
-        race (runConduitRes (udpDatagramSource useUtcClock
-                                                       10000
-                                                       "127.0.0.1" .|
-                                         rtpSource .|
-                                         rtpPayloadDemux [ ( 8
-                                                           , alawPayloadHandler
-                                                           )
-                                                         ]
-                                                         mempty .|
-                                         transcodeStreamC' .|
-                                         resample8to16kHz' (MkS16 0 :: S16 8000) .|
-                                         convertTicksC' at8kHzU32 at16kHzU64 .|
-                                         annotateTypeC _receiveRtpFromUDPStreamType
-                                                       (reorderFramesBySeqNumC ringCapacity) .|
-                                         repacketizeC ptime .|
-                                         -- dbgShowC 1 "" .|
-                                         tvarRingBufferSinkTraversal payload
-                                                                     ringRef))
-                     (runConduitRes (tvarRingBufferSource (0.5 * ptime *
-                                                               fromIntegral ringCapacity)
-                                                          silence
-                                                          ringRef
-                                         -- .| dbgShowC 1 ""
-                                         .| debugExitAfter 1000
-                                         .| annotateTypeSink _receiveRtpFromUDPStreamType
-                                                             streamDebugPlaybackSink))
+        race (runConduitRes (udpDatagramSource useUtcClock 10000 "127.0.0.1" .|
+                                 rtpSource .|
+                                 rtpPayloadDemux [ (8, alawPayloadHandler) ]
+                                                 mempty .|
+                                 transcodeStreamC' .|
+                                 resample8to16kHz' (MkS16 0 :: S16 8000) .|
+                                 convertTicksC' at8kHzU32 at16kHzU64 .|
+                                 annotateTypeC _receiveRtpFromUDPStreamType
+                                               (reorderFramesBySeqNumC ringCapacity) .|
+                                 repacketizeC ptime .|
+                                 -- dbgShowC 1 "" .|
+                                 tvarRingBufferSinkTraversal payload
+                                                             ringRef))
+             (runConduitRes (tvarRingBufferSource (0.5 * ptime *
+                                                       fromIntegral ringCapacity)
+                                                  silence
+                                                  ringRef
+                                 -- .| dbgShowC 1 ""
+                                 .| debugExitAfter 2000
+                                 .| annotateTypeSink _receiveRtpFromUDPStreamType
+                                                     streamDebugPlaybackSink))
 
 --  TODO create a gap detection mechanism, a simple stateful conduit that knows the next timestamp
 tvarRingBufferSinkTraversal :: MonadIO m
                             => Traversal' s a
                             -> TVar (Ring.RingBuffer a)
                             -> Sink s m ()
-tvarRingBufferSinkTraversal trav ringRef =
+tvarRingBufferSinkTraversal !trav !ringRef =
     awaitForever go
   where
-    go x = maybe (return ()) pushInRing (x ^? trav)
+    go !x = maybe (return ()) pushInRing (x ^? trav)
       where
-        pushInRing = liftIO .
-            atomically . modifyTVar ringRef . withStrategy rdeepseq . Ring.push
+        pushInRing !v = liftIO $
+            atomically $ modifyTVar ringRef $ withStrategy rdeepseq $ Ring.push v
 
 tvarRingBufferSource :: (NFData c, Random i, HasDuration c, MonadIO m, KnownNat r, Integral t, Integral s, Random t, Random s)
                      => NominalDiffTime
@@ -95,8 +90,8 @@ tvarRingBufferSource pollInterval silence ringRef =
         forever (pollNextBuffers >>= mapM_ yieldNextBuffer)
   where
     setRandomStartCtx = do
-        ts0 <- liftIO randomIO
-        sn0 <- liftIO randomIO
+        !ts0 <- liftIO randomIO
+        !sn0 <- liftIO randomIO
         put (ts0, sn0)
 
     yieldStart = MkFrameCtx <$> liftIO randomIO <*> use _1 <*> use _2 >>=
@@ -115,12 +110,12 @@ tvarRingBufferSource pollInterval silence ringRef =
             writeTVar ringRef ring'
             return bufs
       where
-        popFromRingPollInterval duration acc ring underflow =
+        popFromRingPollInterval !duration !acc !ring !underflow =
             if duration >= pollInterval
             then (reverse acc, ring)
-            else let (buf, ring') = Ring.popAndSet silence ring
-                     duration' = getDuration buf + duration
-                     underflow' = Ring.size ring == 0
+            else let (!buf, !ring') = Ring.popAndSet silence ring
+                     !duration' = getDuration buf + duration
+                     !underflow' = Ring.size ring == 0
                  in
                      (if underflow' /= underflow
                       then trace (printf "*** RING UNDERFLOW after %s ***"
@@ -134,9 +129,9 @@ tvarRingBufferSource pollInterval silence ringRef =
         pollIntervalMicros :: Ticks 1000000 Int
         pollIntervalMicros = nominalDiffTime # pollInterval
 
-    yieldNextBuffer buf = do
-        ts <- _1 <<+= nominalDiffTime # getDuration buf
-        sn <- _2 <<+= 1
+    yieldNextBuffer !buf = do
+        !ts <- _1 <<+= nominalDiffTime # getDuration buf
+        !sn <- _2 <<+= 1
         yield $
             MkStream $
                 Next $

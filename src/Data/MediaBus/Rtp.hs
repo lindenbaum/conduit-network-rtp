@@ -34,7 +34,7 @@ data RRState ctx = MkRRState { _currCtx       :: ctx
 
 makeLenses ''RRState
 
-rtpSource :: (Monad m) => Conduit (Stream i s t B.ByteString) m RtpStream
+rtpSource :: (Default i, Monad m) => Conduit (Stream i s t B.ByteString) m RtpStream
 rtpSource = foldStreamC $
     \(MkStartingFrom _originalFrameCtx) ->
         evalStateC (MkRRState (MkFrameCtx def def def) True) $

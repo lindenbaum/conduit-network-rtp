@@ -57,9 +57,9 @@ type SeqNum' = SeqNum Word16
 
 type Ticks' r = Ticks r Word32
 
-data FrameCtx i s t = MkFrameCtx { _frameCtxSourceId     :: i
-                                 , _frameCtxTimestampRef :: t
-                                 , _frameCtxSeqNumRef    :: s
+data FrameCtx i s t = MkFrameCtx { _frameCtxSourceId     :: !i
+                                 , _frameCtxTimestampRef :: !t
+                                 , _frameCtxSeqNumRef    :: !s
                                  }
     deriving (Eq, Ord, Generic)
 
@@ -104,9 +104,9 @@ instance (Show i, Show s, Show t) =>
 -- unit long, it can respresent anything ranging from an audio buffer with 20ms
 -- of audio to a single pulse coded audio sample, of course it could also be a
 -- video frame or a chat message.
-data Frame s t c = MkFrame { _frameTimestamp :: t
-                           , _frameSeqNum    :: s
-                           , _framePayload   :: c
+data Frame s t c = MkFrame { _frameTimestamp :: !t
+                           , _frameSeqNum    :: !s
+                           , _framePayload   :: !c
                            }
     deriving (Eq, Ord, Generic)
 
@@ -201,10 +201,11 @@ instance (Show i, Show s, Show t, Show c) =>
 yieldStreamish :: Monad m => Streamish i s t c -> Source m (Stream i s t c)
 yieldStreamish = yield . MkStream
 
-foldStreamC :: Monad m
+foldStreamC :: (Default i, Monad m)
             => (StartingFrom (FrameCtx i s t) -> Conduit (Frame s t c) m o)
             -> Conduit (Stream i s t c) m o
-foldStreamC = mapInput _stream (Just . MkStream) . foldSeriesC
+foldStreamC = mapInput _stream (Just . MkStream) .
+    foldSeriesC (\(MkFrame !t !s _) -> MkFrameCtx def t s)
 
 overStreamC :: Monad m
             => Conduit (Series (FrameCtx i s t) (Frame s t c)) m (Series (FrameCtx i' s' t') (Frame s' t' c'))
@@ -215,23 +216,22 @@ overFramesC :: (Default i, Monad m)
             => (StartingFrom (FrameCtx i s t)
                 -> Conduit (Frame s t from) m (Frame s t to))
             -> Conduit (Stream i s t from) m (Stream i s t to)
-overFramesC f = overStreamC process
+overFramesC !f = overStreamC process
   where
     process = overSeriesC' toInitialCtx f
       where
-        toInitialCtx (MkFrame s t _) =
+        toInitialCtx (MkFrame !s !t _) =
             MkFrameCtx def s t
 
 mapFramesC' :: (NFData i, NFData s, NFData t, NFData c', Monad m)
-            => (Frame s t c -> m (Frame s t c'))
+            => (Frame s t c -> Frame s t c')
             -> Conduit (Stream i s t c) m (Stream i s t c')
-mapFramesC' f = mapMC (mapMOf (stream . _Next) f >=>
-                           return . withStrategy rdeepseq)
+mapFramesC' !f = mapC (over (stream . _Next) (withStrategy rdeepseq f))
 
 mapFramesC :: Monad m
            => (Frame s t c -> m (Frame s t c'))
            -> Conduit (Stream i s t c) m (Stream i s t c')
-mapFramesC f = mapMC (mapMOf (stream . _Next) f)
+mapFramesC !f = mapMC (mapMOf (stream . _Next) f)
 
 mapSeqNumC :: Monad m
            => (s -> s')
@@ -256,19 +256,19 @@ mapPayloadC = mapMC . mapMOf payload
 mapPayloadC' :: (NFData (Stream i s t c'), Monad m)
              => (c -> m c')
              -> Conduit (Stream i s t c) m (Stream i s t c')
-mapPayloadC' f = mapMC (mapMOf payload f >=> return . withStrategy rdeepseq)
+mapPayloadC' !f = mapMC (mapMOf payload f >=> return . withStrategy rdeepseq)
 
 convertTicksC' :: forall proxy0 proxy1 m r t r' t' i s c.
-              (NFData t, NFData t', KnownNat r, KnownNat r', Integral t, Integral t', Monad m, NFData t')
-              => proxy0 '(r, t)
-              -> proxy1 '(r', t')
-              -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r' t') c)
+               (NFData t, NFData t', KnownNat r, KnownNat r', Integral t, Integral t', Monad m, NFData t')
+               => proxy0 '(r, t)
+               -> proxy1 '(r', t')
+               -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r' t') c)
 convertTicksC' _ _ = mapTicksC' convertTicks
 
 foldStream :: (Monoid o, Monad m)
            => (Stream i s t c -> o)
            -> Sink (Stream i s t c) m o
-foldStream f = execWriterC $
+foldStream !f = execWriterC $
     awaitForever $
         tell .
             f
@@ -276,7 +276,7 @@ foldStream f = execWriterC $
 foldStreamM :: (Monoid o, Monad m)
             => (Stream i s t c -> m o)
             -> Sink (Stream i s t c) m o
-foldStreamM f = execWriterC $
+foldStreamM !f = execWriterC $
     awaitForever (lift . lift . f >=> tell)
 
 concatStreamContents :: (Monoid c, Monad m) => Sink (Stream i s t c) m c

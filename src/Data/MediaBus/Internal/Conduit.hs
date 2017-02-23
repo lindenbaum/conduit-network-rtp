@@ -2,6 +2,8 @@ module Data.MediaBus.Internal.Conduit
     ( overRightC
     , fmapMC
     , annotateTypeC
+    , annotateTypeCIn
+    , annotateTypeCOut
     , annotateTypeSink
     , annotateTypeSource
     , debugExitAfter
@@ -45,6 +47,12 @@ fmapMC f = awaitForever go
 
 annotateTypeC :: proxy a -> Conduit a m a -> Conduit a m a
 annotateTypeC _ = id
+
+annotateTypeCIn :: proxy a -> Conduit a m b -> Conduit a m b
+annotateTypeCIn _ = id
+
+annotateTypeCOut :: proxy b -> Conduit a m b -> Conduit a m b
+annotateTypeCOut _ = id
 
 annotateTypeSource :: proxy a -> Source m a -> Source m a
 annotateTypeSource _ = id

@@ -15,10 +15,10 @@ import           Control.Monad.State.Strict
 import           Data.Function                    ( on )
 import           Data.Default
 
-data ReorderSt a b c = MkReorderSt { _expectedRank :: a
-                                   , _frameQueue   :: Set.Set (OrderedBy b)
-                                   , _frameDrops   :: Int
-                                   , _lastFrameCtx :: c
+data ReorderSt a b c = MkReorderSt { _expectedRank :: !a
+                                   , _frameQueue   :: !(Set.Set (OrderedBy b))
+                                   , _frameDrops   :: !Int
+                                   , _lastFrameCtx :: !c
                                    }
 
 makeLenses ''ReorderSt
@@ -34,7 +34,7 @@ reorderFramesByC :: (Monad m, Ord rank, Default i, Default t, Default s, Default
                  -> (rank -> rank)
                  -> Int
                  -> Conduit (Stream i s t c) m (Stream i s t c)
-reorderFramesByC frameRank getNextRank maxQueueLen =
+reorderFramesByC !frameRank !getNextRank !maxQueueLen =
     evalStateC (MkReorderSt def Set.empty 0 def) go
   where
     maxDrops = maxQueueLen
@@ -42,14 +42,14 @@ reorderFramesByC frameRank getNextRank maxQueueLen =
         awaitForever handleNext
         flushQueue
       where
-        handleNext s@(MkStream (Start ctx)) = do
+        handleNext s@(MkStream (Start !ctx)) = do
             flushQueue
             yield s
             put (MkReorderSt (s ^. frameRank) Set.empty 0 ctx)
 
-        handleNext frm = do
-            expRank <- use expectedRank
-            let currRank = frm ^. frameRank
+        handleNext !frm = do
+            !expRank <- use expectedRank
+            let !currRank = frm ^. frameRank
             case compare currRank expRank of
                 EQ -> do
                     yieldNext frm
@@ -72,25 +72,25 @@ reorderFramesByC frameRank getNextRank maxQueueLen =
                     frameQueue %= Set.insert (MkOrderedBy rankCmp frm)
                     maybeYieldNextFromQueue
 
-        yieldNext frm = do
+        yieldNext !frm = do
             expectedRank .= frm ^. frameRank
             updateExpectedRank
             frameDrops .= 0
             yield frm
 
         flushQueue = do
-            q <- frameQueue <<.= Set.empty
+            !q <- frameQueue <<.= Set.empty
             mapM_ (yieldNext . orderedByValue) (Set.toAscList q)
 
         maybeYieldNextFromQueue = do
-            q <- use frameQueue
-            expRank <- use expectedRank
+            !q <- use frameQueue
+            !expRank <- use expectedRank
             case Set.minView q of
                 Nothing -> return ()
-                Just (MkOrderedBy _ candidate, q') ->
-                    let currRank = candidate ^. frameRank
-                        isQueueFull = Set.size q == maxQueueLen
-                        isNextInQueue = currRank <= expRank
+                Just (MkOrderedBy _ !candidate, !q') ->
+                    let !currRank = candidate ^. frameRank
+                        !isQueueFull = Set.size q == maxQueueLen
+                        !isNextInQueue = currRank <= expRank
                     in
                         when (isQueueFull || isNextInQueue) $ do
                             frameQueue .= q'
