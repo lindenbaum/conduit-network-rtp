@@ -25,7 +25,8 @@ module Data.MediaBus.Stream
     , mapSeqNumC
     , mapTicksC
     , mapTicksC'
-    , mapPayloadC
+    , mapPayloadMC
+    , mapPayloadMC'
     , mapPayloadC'
     , convertTicksC'
     , foldStream
@@ -248,15 +249,20 @@ mapTicksC' :: (NFData t, Monad m)
            -> Conduit (Stream i s t c) m (Stream i s t' c)
 mapTicksC' = mapC . withStrategy rdeepseq . over timestamp
 
-mapPayloadC :: Monad m
+mapPayloadMC :: Monad m
             => (c -> m c')
             -> Conduit (Stream i s t c) m (Stream i s t c')
-mapPayloadC = mapMC . mapMOf payload
+mapPayloadMC = mapMC . mapMOf payload
 
-mapPayloadC' :: (NFData (Stream i s t c'), Monad m)
+mapPayloadMC' :: (NFData (Stream i s t c'), Monad m)
              => (c -> m c')
              -> Conduit (Stream i s t c) m (Stream i s t c')
-mapPayloadC' !f = mapMC (mapMOf payload f >=> return . withStrategy rdeepseq)
+mapPayloadMC' !f = mapMC (mapMOf payload f >=> return . withStrategy rdeepseq)
+
+mapPayloadC' :: (NFData c', Monad m)
+             => (c -> c')
+             -> Conduit (Stream i s t c) m (Stream i s t c')
+mapPayloadC' !f = mapC (over payload (withStrategy rdeepseq . f))
 
 convertTicksC' :: forall proxy0 proxy1 m r t r' t' i s c.
                (NFData t, NFData t', KnownNat r, KnownNat r', Integral t, Integral t', Monad m, NFData t')

@@ -97,6 +97,9 @@ instance (Eq w, LocalOrd w) =>
 -- | Types with a duration (e.g. audio samples).
 class HasDuration a where
     getDuration :: a -> NominalDiffTime
+    getDuration !x = from nominalDiffTime # (getDurationTicks x :: Ticks 1000000000000 Integer)
+    getDurationTicks :: (Integral i, KnownNat r) => a -> Ticks r i
+    getDurationTicks !x = nominalDiffTime # getDuration x
 
 -- TODO rename *Timestamp to *Tick
 class SetTimestamp t (GetTimestamp t) ~ t =>

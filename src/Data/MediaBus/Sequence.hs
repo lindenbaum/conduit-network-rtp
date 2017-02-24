@@ -4,7 +4,6 @@ module Data.MediaBus.Sequence
     , HasSeqNum(..)
     , fromSeqNum
     , synchronizeToSeqNum
-    , Discontinous(..)
     ) where
 
 import           Test.QuickCheck                 ( Arbitrary(..) )
@@ -80,15 +79,3 @@ synchronizeToSeqNum startSeq =
         !nextSeq <- get
         modify (+ 1)
         yield (a & seqNum .~ nextSeq)
-
--- -----------------------------------------------------
--- * Dealing with gaps in media streams
--- -----------------------------------------------------
--- | Differentiate between continuous and non-continous occurences of something.
-data Discontinous a = Gap
-                    | Continue a
-    deriving (Show)
-
-instance Functor Discontinous where
-    fmap f (Continue x) = Continue (f x)
-    fmap _f Gap = Gap

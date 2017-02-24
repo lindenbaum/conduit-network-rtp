@@ -9,6 +9,7 @@ module Data.MediaBus.Audio.Channels
 import           Control.Lens
 import           Foreign.Storable
 import           Data.MediaBus.Clock
+import           Data.MediaBus.BlankMedia
 import           Test.QuickCheck
 import           Data.Proxy
 import           GHC.Generics        ( Generic )
@@ -16,6 +17,10 @@ import           Control.DeepSeq
 
 data ChannelLayout = SingleChannel | ChannelPair
     deriving (Show, Eq, Ord, Enum, Generic)
+
+instance (CanBeBlank r) =>
+         CanBeBlank (ChannelPair r) where
+    blank = MkChannelPair blank blank
 
 instance NFData ChannelLayout
 

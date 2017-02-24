@@ -7,6 +7,7 @@ import           Foreign.Storable
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Channels
+import           Data.MediaBus.BlankMedia
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Transcoder
@@ -18,8 +19,7 @@ import           Data.Proxy
 import           Data.Function                ( on )
 import           Test.QuickCheck              ( Arbitrary(..) )
 import           GHC.Generics                 ( Generic )
-import           Control.Parallel.Strategies       ( NFData, rdeepseq
-                                                   , withStrategy )
+import           Control.Parallel.Strategies  ( NFData, rdeepseq, withStrategy )
 
 newtype ALaw = MkALaw { _alawSample :: Word8 }
     deriving (Show, Storable, Num, Eq, Bits, Arbitrary, Generic)
@@ -33,19 +33,20 @@ instance Ord ALaw where
 
 instance HasDuration (Proxy ALaw) where
     getDuration _ = 1 / 8000
+    getDurationTicks _ = convertTicks (MkTicks 1 :: Ticks 8000 Int)
 
 instance HasChannelLayout ALaw where
     channelLayout _ = SingleChannel
 
 instance Transcoder (SampleBuffer ALaw) (SampleBuffer (S16 8000)) where
-    transcode =
-            over (framePayload . eachSample)
-                 (withStrategy rdeepseq . MkS16 . decodeALawSample . _alawSample)
+    transcode = over (framePayload . eachSample)
+                     (withStrategy rdeepseq .
+                          MkS16 . decodeALawSample . _alawSample)
 
 instance Transcoder (SampleBuffer (S16 8000)) (SampleBuffer ALaw) where
-    transcode =
-            over (framePayload . eachSample)
-                 (withStrategy rdeepseq . MkALaw . encodeALawSample . _s16Sample)
+    transcode = over (framePayload . eachSample)
+                     (withStrategy rdeepseq .
+                          MkALaw . encodeALawSample . _s16Sample)
 
 instance IsAudioSample ALaw where
     type GetAudioSampleRate ALaw = 8000
@@ -58,6 +59,9 @@ instance IsAudioSample ALaw where
         mkS16 :: Int16 -> S16 8000
         mkS16 = MkS16
     setAudioSampleRate _ = id
+
+instance CanBeBlank ALaw where
+    blank = MkALaw 0xD5
 
 decodeALawSample :: Word8 -> Int16
 decodeALawSample !a' = let !a = a' `xor` 85

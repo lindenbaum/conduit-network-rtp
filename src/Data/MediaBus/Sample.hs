@@ -20,6 +20,7 @@ import           Data.Vector.Storable.Mutable    as M
 import           Control.Monad.ST                ( ST, runST )
 import           GHC.Exts                        ( IsList(..) )
 import           Data.Typeable
+import           Data.MediaBus.BlankMedia
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Packetizer
 import qualified Data.ByteString                 as B
@@ -34,7 +35,8 @@ newtype SampleBuffer sampleType =
       MkSampleBuffer { _sampleVector :: SV.Vector sampleType }
     deriving (Eq, Monoid, Generic)
 
-instance NFData sampleType => NFData (SampleBuffer sampleType)
+instance NFData sampleType =>
+         NFData (SampleBuffer sampleType)
 
 instance (SV.Storable sampleType, Typeable sampleType, Show sampleType) =>
          Show (SampleBuffer sampleType) where
@@ -51,6 +53,14 @@ instance (SV.Storable sampleType, Typeable sampleType, Show sampleType) =>
 
 makeLenses ''SampleBuffer
 
+instance (CanBeBlank sa, SV.Storable sa, HasDuration (Proxy sa)) =>
+         CanGenerateBlankMedia (SampleBuffer sa) where
+    blankFor !dur = let !sampleDuration = getDuration (Proxy :: Proxy sa)
+                        !samples = ceiling (dur / sampleDuration)
+                        !blankSample = blank
+                    in
+                        MkSampleBuffer (SV.replicate samples blankSample)
+
 instance SV.Storable sampleType =>
          Default (SampleBuffer sampleType) where
     def = mempty
@@ -60,6 +70,8 @@ instance (HasDuration (Proxy sampleType), SV.Storable sampleType) =>
     getDuration sb = let sampleDur = getDuration (Proxy :: Proxy sampleType)
                      in
                          sampleDur * fromIntegral (sampleCount sb)
+    getDurationTicks sb = getDurationTicks (Proxy :: Proxy sampleType) *
+        fromIntegral (sampleCount sb)
 
 instance (SV.Storable a, HasDuration (Proxy a)) =>
          CanSplitAfterDuration (SampleBuffer a) where
@@ -67,7 +79,9 @@ instance (SV.Storable a, HasDuration (Proxy a)) =>
         | getDuration buf > tPacket =
               let (!nextPacket, !rest) = SV.splitAt n bufV
               in
-                  Just (MkSampleBuffer (SV.force nextPacket), MkSampleBuffer rest)
+                  Just ( MkSampleBuffer (SV.force nextPacket)
+                       , MkSampleBuffer rest
+                       )
         | otherwise = Nothing
       where
         !n = ceiling (tPacket / tSample)

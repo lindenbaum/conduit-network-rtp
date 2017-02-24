@@ -12,6 +12,7 @@ module Data.MediaBus.Audio.Raw
 
 import           Foreign.Storable
 import           Data.MediaBus.Audio.Channels
+import           Data.MediaBus.BlankMedia
 import           Data.Int
 import           Control.Lens
 import           Test.QuickCheck
@@ -20,7 +21,7 @@ import           Data.Typeable
 import           Data.MediaBus.Clock
 import           GHC.TypeLits
 import           Data.Function                ( on )
-import           GHC.Generics         ( Generic )
+import           GHC.Generics                 ( Generic )
 import           Control.DeepSeq
 
 newtype S16 (rate :: Nat) = MkS16 { _s16Sample :: Int16 }
@@ -31,6 +32,7 @@ instance NFData (S16 rate)
 instance KnownNat r =>
          HasDuration (Proxy (S16 r)) where
     getDuration _ = 1 / fromInteger (natVal (Proxy :: Proxy r))
+    getDurationTicks _ = convertTicks (MkTicks 1 :: Ticks r Int)
 
 instance Show (S16 r) where
     show (MkS16 x) = show x
@@ -56,6 +58,9 @@ instance KnownNat r =>
             else (x `unsafeShiftR` 1) + (y `unsafeShiftR` 1)
     setAudioSampleRate _ (MkS16 !x) =
         MkS16 x
+
+instance CanBeBlank (S16 r) where
+    blank = MkS16 0
 
 instance (IsAudioSample a) =>
          IsAudioSample (ChannelPair a) where

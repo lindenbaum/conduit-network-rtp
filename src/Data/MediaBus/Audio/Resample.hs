@@ -13,7 +13,7 @@ import           Control.Parallel.Strategies  ( NFData )
 resample8to16kHz' :: (NFData s, NFData t, NFData i, IsAudioSample sa, GetAudioSampleRate sa ~ 8000, Monad m, IsAudioSample (SetAudioSampleRate sa 16000), NFData (SetAudioSampleRate sa 16000))
                   => sa
                   -> Conduit (Stream i s t (SampleBuffer sa)) m (Stream i s t (SampleBuffer (SetAudioSampleRate sa 16000)))
-resample8to16kHz' !sa = evalStateC sa (mapPayloadC' resample)
+resample8to16kHz' !sa = evalStateC sa (mapPayloadMC' resample)
   where
     resample !sb
         | sampleCount sb == 0 = return (MkSampleBuffer mempty)
