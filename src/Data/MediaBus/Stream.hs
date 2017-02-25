@@ -17,9 +17,13 @@ module Data.MediaBus.Stream
     , Stream'
     , stream
     , yieldStreamish
-    , foldStreamC
+    , yieldStreamish'
+    , yieldNextFrame
+    , yieldNextFrame'
+    , yieldStartFrameCtx
+    , yieldStartFrameCtx'
+    , toFramesC
     , overStreamC
-    , overFramesC
     , mapFramesC
     , mapFramesC'
     , mapSeqNumC
@@ -199,30 +203,42 @@ instance (Show i, Show s, Show t, Show c) =>
          Show (Stream i s t c) where
     show (MkStream s) = show s
 
-yieldStreamish :: Monad m => Streamish i s t c -> Source m (Stream i s t c)
+yieldStreamish :: Monad m => Streamish i s t c -> Conduit a m (Stream i s t c)
 yieldStreamish = yield . MkStream
 
-foldStreamC :: (Default i, Monad m)
-            => (StartingFrom (FrameCtx i s t) -> Conduit (Frame s t c) m o)
-            -> Conduit (Stream i s t c) m o
-foldStreamC = mapInput _stream (Just . MkStream) .
-    foldSeriesC (\(MkFrame !t !s _) -> MkFrameCtx def t s)
+yieldStreamish' :: (NFData i, NFData s, NFData t, NFData c, Monad m)
+                => Streamish i s t c
+                -> Conduit a m (Stream i s t c)
+yieldStreamish' = yield . withStrategy rdeepseq . MkStream
+
+yieldNextFrame :: Monad m => Frame s t c -> Conduit a m (Stream i s t c)
+yieldNextFrame = yieldStreamish . Next
+
+yieldNextFrame' :: (NFData i, NFData s, NFData t, NFData c, Monad m)
+                => Frame s t c
+                -> Conduit a m (Stream i s t c)
+yieldNextFrame' = yieldStreamish' . Next
+
+yieldStartFrameCtx :: Monad m => FrameCtx i s t -> Conduit a m (Stream i s t c)
+yieldStartFrameCtx = yieldStreamish . Start
+
+yieldStartFrameCtx' :: (NFData i, NFData s, NFData t, NFData c, NFData (FrameCtx i s t), Monad m)
+                    => FrameCtx i s t
+                    -> Conduit a m (Stream i s t c)
+yieldStartFrameCtx' = yieldStreamish' . Start
 
 overStreamC :: Monad m
             => Conduit (Series (FrameCtx i s t) (Frame s t c)) m (Series (FrameCtx i' s' t') (Frame s' t' c'))
             -> Conduit (Stream i s t c) m (Stream i' s' t' c')
 overStreamC = mapInput _stream (Just . MkStream) . mapOutput MkStream
 
-overFramesC :: (Default i, Monad m)
-            => (StartingFrom (FrameCtx i s t)
-                -> Conduit (Frame s t from) m (Frame s t to))
-            -> Conduit (Stream i s t from) m (Stream i s t to)
-overFramesC !f = overStreamC process
+toFramesC :: Monad m => Conduit (Stream i s t c) m (Frame s t c)
+toFramesC = awaitForever go
   where
-    process = overSeriesC' toInitialCtx f
-      where
-        toInitialCtx (MkFrame !s !t _) =
-            MkFrameCtx def s t
+    go (MkStream (Start _)) =
+        return ()
+    go (MkStream (Next !frm)) =
+        yield frm
 
 mapFramesC' :: (NFData i, NFData s, NFData t, NFData c', Monad m)
             => (Frame s t c -> Frame s t c')
@@ -250,13 +266,13 @@ mapTicksC' :: (NFData t, Monad m)
 mapTicksC' = mapC . withStrategy rdeepseq . over timestamp
 
 mapPayloadMC :: Monad m
-            => (c -> m c')
-            -> Conduit (Stream i s t c) m (Stream i s t c')
+             => (c -> m c')
+             -> Conduit (Stream i s t c) m (Stream i s t c')
 mapPayloadMC = mapMC . mapMOf payload
 
 mapPayloadMC' :: (NFData (Stream i s t c'), Monad m)
-             => (c -> m c')
-             -> Conduit (Stream i s t c) m (Stream i s t c')
+              => (c -> m c')
+              -> Conduit (Stream i s t c) m (Stream i s t c')
 mapPayloadMC' !f = mapMC (mapMOf payload f >=> return . withStrategy rdeepseq)
 
 mapPayloadC' :: (NFData c', Monad m)

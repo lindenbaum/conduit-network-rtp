@@ -19,6 +19,17 @@ module Data.MediaBus.Clock
     , _utcTimeDiff
     , _utcTime
     , utcTimeDiff
+    , STicksK(..)
+    , type STicksGetRate
+    , type STicksGetTicks
+    , type WithSTicks
+    , HasStaticDuration(..)
+    , toSTicksProxy
+    , getStaticDuration
+    , getStaticTicks
+    , getStaticRate
+    , ticksFromSTicks
+    , rateFromSTicks
     ) where
 
 import           Conduit
@@ -38,6 +49,7 @@ import           Test.QuickCheck
 import           GHC.Generics                    ( Generic )
 import           Control.DeepSeq
 import           System.Random
+import           Data.Tagged
 
 newtype Ticks rate w = MkTicks { _ticks :: w }
     deriving (Eq, Real, Integral, Enum, LocalOrd, Num, Arbitrary, Default, Generic, Random)
@@ -97,7 +109,8 @@ instance (Eq w, LocalOrd w) =>
 -- | Types with a duration (e.g. audio samples).
 class HasDuration a where
     getDuration :: a -> NominalDiffTime
-    getDuration !x = from nominalDiffTime # (getDurationTicks x :: Ticks 1000000000000 Integer)
+    getDuration !x = from nominalDiffTime #
+        (getDurationTicks x :: Ticks 1000000000000 Integer)
     getDurationTicks :: (Integral i, KnownNat r) => a -> Ticks r i
     getDurationTicks !x = nominalDiffTime # getDuration x
 
@@ -204,3 +217,62 @@ instance LocalOrd (TimeDiff UtcClock) where
       where
         roundToSeconds = round . (/ 1000000000000) . _utcTimeDiff
         roundToSeconds :: TimeDiff UtcClock -> Word64
+
+data STicksK = STicks Nat Nat
+
+type family STicksGetRate (s :: STicksK) :: Nat where
+        STicksGetRate ('STicks r t) = r
+
+type family STicksGetTicks (s :: STicksK) :: Nat where
+        STicksGetTicks ('STicks r t) = t
+
+type WithSTicks r t x = Tagged ('STicks r t) x
+
+class SetStaticDuration s (GetStaticDuration s) ~ s =>
+      HasStaticDuration s where
+    type SetStaticDuration s (pt :: STicksK)
+    type GetStaticDuration s :: STicksK
+
+instance (KnownNat r, KnownNat t) =>
+         HasStaticDuration (Tagged ('STicks r t) x) where
+    type SetStaticDuration (Tagged ('STicks r t) x) pt = Tagged pt x
+    type GetStaticDuration (Tagged ('STicks r t) x) = 'STicks r t
+
+instance (KnownNat r, KnownNat t) =>
+         HasDuration (Tagged ('STicks r t) x) where
+    getDuration _ = getStaticDuration (Proxy :: Proxy (Tagged ('STicks r t) x))
+
+toSTicksProxy :: (HasStaticDuration s, GetStaticDuration s ~ 'STicks r t)
+              => proxy s
+              -> Proxy ('STicks r t)
+toSTicksProxy _ = Proxy
+
+getStaticDuration :: forall proxy s r t.
+                  (KnownNat r, KnownNat t, HasStaticDuration s, GetStaticDuration s ~ 'STicks r t)
+                  => proxy s
+                  -> NominalDiffTime
+getStaticDuration px = from nominalDiffTime # (ticksFromSTicks (toSTicksProxy px) :: Ticks r Integer)
+
+getStaticTicks :: forall proxy s r t i.
+               (KnownNat r, KnownNat t, HasStaticDuration s, GetStaticDuration s ~ 'STicks r t, Integral i)
+               => proxy s
+               -> Ticks r i
+getStaticTicks px = ticksFromSTicks (toSTicksProxy px)
+
+getStaticRate :: forall proxy s r t.
+              (KnownNat r, KnownNat t, HasStaticDuration s, GetStaticDuration s ~ 'STicks r t)
+              => proxy s
+              -> Integer
+getStaticRate px = rateFromSTicks (toSTicksProxy px)
+
+ticksFromSTicks :: forall proxy rate ticks i.
+                (KnownNat rate, KnownNat ticks, Integral i)
+                => proxy ('STicks rate ticks)
+                -> Ticks rate i
+ticksFromSTicks _ = MkTicks (fromIntegral (natVal (Proxy :: Proxy ticks)))
+
+rateFromSTicks :: forall proxy rate ticks.
+               (KnownNat rate, KnownNat ticks)
+               => proxy ('STicks rate ticks)
+               -> Integer
+rateFromSTicks _ = fromIntegral (natVal (Proxy :: Proxy rate))

@@ -71,10 +71,10 @@ instance Show e =>
         showElems = unlines .
             map (\(k, v) -> printf "    %1s %1s %5s:  %s"
                                    (if k == r ^. endPosition
-                                    then "<" :: String
+                                    then ">" :: String
                                     else "")
                                    (if k == startIndex
-                                    then ">" :: String
+                                    then "<" :: String
                                     else "")
                                    (show k)
                                    (show v))

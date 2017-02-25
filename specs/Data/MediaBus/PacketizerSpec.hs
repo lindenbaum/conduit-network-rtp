@@ -35,7 +35,7 @@ inputPacketsHaveAnIntegralMultipleOfTheDesiredDuration (Positive len) count (Pos
     let inputs = [ mkTestPacket n (len * mult)
                  | n <- [0 .. count] ]
     in
-        ((length (runRepacketize inputs len) - 1) `div` mult) `shouldBe` length inputs
+        (length (runRepacketize inputs len) `div` mult) `shouldBe` length inputs
 
 inputPacketsAreBiggerAndNotDivisibleByTheDesiredDuration (Positive count) =
     let inputs = mkTestStartPacket 0 25 : [ mkTestPacket n 25

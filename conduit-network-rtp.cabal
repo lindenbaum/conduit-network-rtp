@@ -17,12 +17,14 @@ library
   hs-source-dirs:      src
   exposed-modules:
                        Data.MediaBus
+                     , Data.MediaBus.Applications.RtpAlawAudio
                      , Data.MediaBus.Audio.Alaw
                      , Data.MediaBus.Audio.Channels
                      , Data.MediaBus.Audio.Raw
                      , Data.MediaBus.Audio.Resample
                      , Data.MediaBus.BlankMedia
                      , Data.MediaBus.Clock
+                     , Data.MediaBus.Discontinous
                      , Data.MediaBus.DebugSink
                      , Data.MediaBus.Internal.AsyncConduit
                      , Data.MediaBus.Internal.BiIndex

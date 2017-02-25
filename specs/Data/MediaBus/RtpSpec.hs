@@ -10,7 +10,6 @@ import qualified Data.MediaBus.Rtp.Packet       as Rtp
 import qualified Data.ByteString                as B
 import           Data.Word
 import           Control.Lens
-import           Control.Monad
 import           Data.Proxy
 
 spec :: Spec
@@ -25,7 +24,7 @@ rtpSourceSpec = describe "rtpSource" $ do
                             0
         runTestConduit inputs = runConduitPure (sourceList inputs .|
                                                     annotateTypeCIn (Proxy :: Proxy (Stream Int Int Int B.ByteString))
-                                                                     rtpSource .|
+                                                                    rtpSource .|
                                                     consume)
 
     it "yields 'Start' when only when the first payload packet arrives" $
@@ -153,8 +152,8 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
             fallback = mempty
             outs = preview payload <$> runTestConduit inputs
                                                       [ ( Rtp.MkRtpPayloadType 129
-                                                        , alawPayloadHandler >=>
-                                                            return . transcode
+                                                        , transcode .
+                                                            alawPayloadHandler
                                                         )
                                                       ]
                                                       fallback
@@ -169,24 +168,20 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
                 ]
             outputs = preview payload <$> runTestConduit inputs
                                                          [ ( 8
-                                                           , return .
-                                                               (payload .~
-                                                                    "first 8 handler")
+                                                           , payload .~
+                                                               "first 8 handler"
                                                            )
                                                          , ( 8
-                                                           , return .
-                                                               (payload .~
-                                                                    "second 8 handler")
+                                                           , payload .~
+                                                               "second 8 handler"
                                                            )
                                                          , ( 0
-                                                           , return .
-                                                               (payload .~
-                                                                    "first 0 handler")
+                                                           , payload .~
+                                                               "first 0 handler"
                                                            )
                                                          , ( 0
-                                                           , return .
-                                                               (payload .~
-                                                                    "second 0 handler")
+                                                           , payload .~
+                                                               "second 0 handler"
                                                            )
                                                          ]
                                                          "bad"

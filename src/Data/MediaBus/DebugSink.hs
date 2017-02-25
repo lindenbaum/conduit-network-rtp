@@ -6,7 +6,6 @@ module Data.MediaBus.DebugSink
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Stream
-import           Data.MediaBus.Internal.Series
 import           System.IO                     ( Handle, hClose )
 import           System.Process                ( shell )
 import           Data.Streaming.Process        ( Inherited(..)
@@ -40,4 +39,4 @@ instance KnownNat r =>
 streamDebugPlaybackSink :: (Default i, HasDebugPlaybackSink s t c, MonadIO m)
                         => Sink (Stream i s t c) m ()
 streamDebugPlaybackSink =
-    foldStreamC $ \(MkStartingFrom _) -> debugPlaybackSink
+    toFramesC .| debugPlaybackSink

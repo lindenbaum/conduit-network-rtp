@@ -8,9 +8,8 @@ module Data.MediaBus.Internal.Series
     , AsSeriesNext(..)
     , StartingFrom(..)
     , startingFromValue
-    , foldSeriesC
-    , overSeriesC'
-    , overSeriesC
+    , toNextsC'
+    , toStartsC'
     , monotoneSeriesC
     ) where
 
@@ -113,41 +112,17 @@ instance Show a =>
     show (MkStartingFrom !x) =
         "(STARTING-FROM: " ++ show x ++ ")"
 
--- | Fold all 'Next' values using a stateful conduit, which is /restarted/
--- everytime a 'Start' value is received.
---
--- NOTE: Up to the first 'Start' value, all input is discarded.
-foldSeriesC :: Monad m
-            => (b -> a)
-            -> (StartingFrom a -> Conduit b m c)
-            -> Conduit (Series a b) m c
-foldSeriesC !fInitialStart !f = awaitForever awaitStart
+toNextsC' :: Monad m => Conduit (Series a b) m b
+toNextsC' = awaitForever go
   where
-    awaitStart (Next !b) = do
-      leftover (Next b)
-      awaitStart (Start (fInitialStart b))
-    awaitStart (Start !a) = goNext .| f (MkStartingFrom a)
-    goNext = do
-        !mb <- await
-        case mb of
-            Just (Next !b) -> yield b >> goNext
-            Just (Start !a) -> leftover (Start a)
-            Nothing -> return ()
+    go (Start !_a) = return ()
+    go (Next !b) = yield b
 
-overSeriesC' :: Monad m
-             => (b -> a)
-             -> (StartingFrom a -> ConduitM b c m ())
-             -> Conduit (Series a b) m (Series a c)
-overSeriesC' !fInitialStart !fc =
-  foldSeriesC fInitialStart (\ sa@(MkStartingFrom !a) -> do
-                               yield (Start a)
-                               mapOutput Next (fc sa))
-
-overSeriesC :: Monad m
-            => a
-            -> (StartingFrom a -> Conduit b m c)
-            -> Conduit (Series a b) m (Series a c)
-overSeriesC initialA = overSeriesC' (const initialA)
+toStartsC' :: Monad m => Conduit (Series a b) m a
+toStartsC' = awaitForever go
+  where
+    go (Start !a) = yield a
+    go (Next !_b) = return ()
 
 monotoneSeriesC :: Monad m => m a -> (i -> m b) -> Conduit i m (Series a b)
 monotoneSeriesC !initSeries !continueSeries = do

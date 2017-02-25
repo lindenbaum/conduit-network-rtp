@@ -34,13 +34,14 @@ data RRState ctx = MkRRState { _currCtx       :: ctx
 
 makeLenses ''RRState
 
-rtpSource :: (Default i, Monad m) => Conduit (Stream i s t B.ByteString) m RtpStream
-rtpSource = foldStreamC $
-    \(MkStartingFrom _originalFrameCtx) ->
-        evalStateC (MkRRState (MkFrameCtx def def def) True) $
-            awaitForever processFrames
+rtpSource :: (Default i, Monad m)
+          => Conduit (Stream i s t B.ByteString) m RtpStream
+rtpSource = evalStateC (MkRRState (MkFrameCtx def def def) True) $
+    awaitForever processFrames
   where
-    processFrames (MkFrame _ _ contentIn) =
+    processFrames (MkStream (Start _)) =
+        return ()
+    processFrames (MkStream (Next (MkFrame _ _ !contentIn))) =
         case Rtp.deserialize contentIn of
             Left rtpError -> traceRtpError rtpError
             Right rtpPacket -> do
@@ -56,7 +57,8 @@ rtpSource = foldStreamC $
     updateState rtpHeader = do
         oldCtx <- currCtx <<%=
                       ((frameCtxSeqNumRef .~ Rtp.sequenceNumber rtpHeader)
-                           . (frameCtxTimestampRef .~ Rtp.headerTimestamp rtpHeader))
+                           . (frameCtxTimestampRef .~
+                                  Rtp.headerTimestamp rtpHeader))
         wasFirstPacket <- isFirstPacket <<.= False
         if oldCtx ^. frameCtxSourceId /= Rtp.ssrc rtpHeader
             then do
@@ -81,7 +83,7 @@ rtpSource = foldStreamC $
                 timestampMaxDelta = 2000 -- TODO extract
             in
                 d >= timestampMaxDelta
-    yieldStreamStart = use currCtx >>= yield . MkStream . Start
+    yieldStreamStart = use currCtx >>= yieldStartFrameCtx
     yieldStreamNext p = do
         ts <- use (currCtx . frameCtxTimestampRef)
         sn <- use (currCtx . frameCtxSeqNumRef)
@@ -91,24 +93,25 @@ data RRSourceChange = FrameCtxChanged | FrameCtxNotChanged
     deriving (Eq)
 
 rtpPayloadDemux :: (Integral t, Monad m)
-                => [(Rtp.RtpPayloadType, RtpPayloadHandler m (Ticks r t) c)]
+                => [(Rtp.RtpPayloadType, RtpPayloadHandler (Ticks r t) c)]
                 -> c
                 -> Conduit RtpStream m (Stream Rtp.RtpSsrc Rtp.RtpSeqNum (Ticks r t) c)
 rtpPayloadDemux payloadTable fallbackContent =
     mapC (timestamp %~ (MkTicks . fromIntegral . Rtp._rtpTimestamp)) .|
-        overFramesC go
+        awaitForever go
   where
-    setFallbackContent = return . (payload .~ fallbackContent)
-    go _start = awaitForever handleFrame
-      where
-        handleFrame frm = let pt = frm ^. framePayload . Rtp.rtpPayloadType
-                              mHandler = Data.List.lookup pt payloadTable
-                          in
-                              lift (fromMaybe setFallbackContent mHandler frm) >>=
-                                  yield
+    setFallbackContent = payload .~ fallbackContent
+    go (MkStream (Next !frm)) =
+        let pt = frm ^. framePayload . Rtp.rtpPayloadType
+            mHandler = Data.List.lookup pt payloadTable
+            !frm' = fromMaybe setFallbackContent mHandler frm
+        in
+            yieldNextFrame frm'
+    go (MkStream (Start !frmCtx)) =
+        yieldStartFrameCtx frmCtx
 
-type RtpPayloadHandler m t c = Frame Rtp.RtpSeqNum t Rtp.RtpPayload
-    -> m (Frame Rtp.RtpSeqNum t c)
+type RtpPayloadHandler t c = Frame Rtp.RtpSeqNum t Rtp.RtpPayload
+    -> Frame Rtp.RtpSeqNum t c
 
-alawPayloadHandler :: Monad m => RtpPayloadHandler m t (SampleBuffer ALaw)
-alawPayloadHandler = return . (payload %~ (coerce . Rtp._rtpPayload))
+alawPayloadHandler :: RtpPayloadHandler t (SampleBuffer ALaw)
+alawPayloadHandler = payload %~ (coerce . Rtp._rtpPayload)

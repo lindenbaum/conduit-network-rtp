@@ -8,6 +8,7 @@ module Data.MediaBus.Packetizer
 import           Conduit
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Clock
+import           Data.MediaBus.Internal.Series
 import           Data.Time.Clock
 import           Data.Default
 import           Control.Monad.State.Strict
@@ -22,10 +23,9 @@ repacketizeC :: (Num s, Monad m, HasDuration c, CanSplitAfterDuration c, Default
              => NominalDiffTime
              -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r t) c)
 repacketizeC !packetDuration =
-    overFramesC go
+    evalStateC 0 $ awaitForever go
   where
-    go _ = evalStateC 0 (awaitForever handleFrames)
-    handleFrames (MkFrame !t !s !cIn) =
+    go (MkStream (Next (MkFrame !t !s !cIn))) =
         yieldLoop cIn 0
       where
         yieldLoop !c !timeOffset =
@@ -33,13 +33,16 @@ repacketizeC !packetDuration =
                 Just (!packet, !rest) -> do
                     yieldWithAdaptedSeqNumAndTimestamp packet
                     modify (+ 1)
-                    let packetDurationInTicks = nominalDiffTime # getDuration packet
+                    let packetDurationInTicks = nominalDiffTime #
+                            getDuration packet
                     yieldLoop rest (timeOffset + packetDurationInTicks)
                 Nothing -> yieldWithAdaptedSeqNumAndTimestamp c
           where
             yieldWithAdaptedSeqNumAndTimestamp !p = do
                 !seqNumOffset <- get
-                yield (MkFrame (t + timeOffset) (s + seqNumOffset) p)
+                yieldNextFrame (MkFrame (t + timeOffset) (s + seqNumOffset) p)
+    go (MkStream (Start !frmCtx)) =
+        yieldStartFrameCtx frmCtx
 
 -- | Class of types that support splitting of from the front a packet containing
 -- roughly a certain duration.
@@ -47,6 +50,5 @@ class CanSplitAfterDuration a where
     -- | Try to split the packet into the a part which has at most the given
     -- duration and a rest. If not possible, e.g. because the input data is
     -- already shorter than the given duration, return `Nothing`.
-    splitAfterDuration :: NominalDiffTime -> a -> Maybe (a, a)
-    -- TODO make the repacketization create ONLY valid sized packets, even if that means dropping content
-    -- TODO allow repacketization to combine the packets
+    splitAfterDuration :: NominalDiffTime -> a -> Maybe (a, a)-- TODO make the repacketization create ONLY valid sized packets, even if that means dropping content
+                                                              -- TODO allow repacketization to combine the packets
