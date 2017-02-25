@@ -6,7 +6,6 @@ import           Data.Word
 import           Test.Hspec
 import           Test.QuickCheck
 import           Data.MediaBus
-import           Data.MediaBus.Internal.Monotone
 
 -- -----------------------------------------------------------------------------
 -- * Tests/Specs

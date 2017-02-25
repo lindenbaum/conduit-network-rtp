@@ -3,8 +3,6 @@ module Data.MediaBus.RtpSpec ( spec ) where
 import           Conduit
 import           Data.Conduit.List
 import           Data.MediaBus
-import           Data.MediaBus.Internal.Series
-import           Data.MediaBus.Internal.Conduit
 import           Test.Hspec
 import qualified Data.MediaBus.Rtp.Packet       as Rtp
 import qualified Data.ByteString                as B

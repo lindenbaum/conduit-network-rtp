@@ -18,28 +18,28 @@ library
   exposed-modules:
                        Data.MediaBus
                      , Data.MediaBus.Applications.RtpAlawAudio
+                     , Data.MediaBus.AsyncConduit
                      , Data.MediaBus.Audio.Alaw
                      , Data.MediaBus.Audio.Channels
                      , Data.MediaBus.Audio.Raw
                      , Data.MediaBus.Audio.Resample
+                     , Data.MediaBus.BiIndex
                      , Data.MediaBus.BlankMedia
                      , Data.MediaBus.Clock
-                     , Data.MediaBus.Discontinous
+                     , Data.MediaBus.Conduit
                      , Data.MediaBus.DebugSink
-                     , Data.MediaBus.Internal.AsyncConduit
-                     , Data.MediaBus.Internal.BiIndex
-                     , Data.MediaBus.Internal.Conduit
-                     , Data.MediaBus.Internal.Monotone
-                     , Data.MediaBus.Internal.OrderedBy
-                     , Data.MediaBus.Internal.RingBuffer
-                     , Data.MediaBus.Internal.Series
+                     , Data.MediaBus.Discontinous
+                     , Data.MediaBus.Monotone
+                     , Data.MediaBus.OrderedBy
                      , Data.MediaBus.Packetizer
                      , Data.MediaBus.Payload
                      , Data.MediaBus.Reorder
+                     , Data.MediaBus.RingBuffer
                      , Data.MediaBus.Rtp
                      , Data.MediaBus.Rtp.Packet
                      , Data.MediaBus.Sample
                      , Data.MediaBus.Sequence
+                     , Data.MediaBus.Series
                      , Data.MediaBus.SourceId
                      , Data.MediaBus.Stream
                      , Data.MediaBus.Transcoder
@@ -122,8 +122,8 @@ test-suite tests
   main-is:             Spec.hs
   other-modules:       Data.MediaBus.Audio.ResampleSpec
                      , Data.MediaBus.ClockSpec
-                     , Data.MediaBus.Internal.BiIndexSpec
-                     , Data.MediaBus.Internal.RingBufferSpec
+                     , Data.MediaBus.BiIndexSpec
+                     , Data.MediaBus.RingBufferSpec
                      , Data.MediaBus.PacketizerSpec
                      , Data.MediaBus.ReorderSpec
                      , Data.MediaBus.RtpSpec

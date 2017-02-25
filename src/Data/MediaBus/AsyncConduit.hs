@@ -1,4 +1,4 @@
-module Data.MediaBus.Internal.AsyncConduit
+module Data.MediaBus.AsyncConduit
     ( mkDecoupledSource
     , connectConcurrentlyPolledSourceToSink
     , PayloadQ()
@@ -11,14 +11,16 @@ import           Control.Monad.State
 import           Data.Time.Clock
 import           Control.Concurrent.Async.Lifted
 import           Control.Concurrent.STM
-import           Control.Concurrent                ( threadDelay )
-import           Control.Parallel.Strategies       ( NFData, rdeepseq
-                                                   , using, withStrategy )
+import           Control.Concurrent              ( threadDelay )
+import           Control.Parallel.Strategies     ( NFData, rdeepseq, using
+                                                 , withStrategy )
 import           GHC.TypeLits
 import           System.Random
 import           Conduit
-import           Data.MediaBus
-import qualified Data.MediaBus.Internal.RingBuffer as Ring
+import           Data.MediaBus.Clock
+import           Data.MediaBus.Stream
+import           Data.MediaBus.Discontinous
+import qualified Data.MediaBus.RingBuffer        as Ring
 import           Control.Lens
 import           Text.Printf
 import           Data.Default
@@ -46,13 +48,13 @@ mkDecoupledSource !frameQueueLen !pollIntervall !pTime !src = do
     return (void a, payloadQSource pollIntervall pTime ringRef)
 
 connectConcurrentlyPolledSourceToSink :: forall c m r t s i.
-               (Default c, HasDuration c, NFData c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Random i, Random t, Random s, NFData t, NFData s)
-               => Int
-               -> NominalDiffTime
-               -> NominalDiffTime
-               -> Source m (Stream i s (Ticks r t) c)
-               -> Sink (Stream i s (Ticks r t) (Discontinous c)) m ()
-               -> m ()
+                                      (Default c, HasDuration c, NFData c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Random i, Random t, Random s, NFData t, NFData s)
+                                      => Int
+                                      -> NominalDiffTime
+                                      -> NominalDiffTime
+                                      -> Source m (Stream i s (Ticks r t) c)
+                                      -> Sink (Stream i s (Ticks r t) (Discontinous c)) m ()
+                                      -> m ()
 connectConcurrentlyPolledSourceToSink frameQueueLen pollIntervall pTime src sink = do
     ringRef <- mkPayloadQ frameQueueLen
     void $
@@ -66,8 +68,8 @@ mkPayloadQ :: (MonadBaseControl IO m) => Int -> m (PayloadQ a)
 mkPayloadQ qlen = liftBase (MkPayloadQ <$> newTVarIO (Ring.newRingBuffer qlen))
 
 payloadQSink :: (NFData a, MonadBaseControl IO m)
-                => PayloadQ a
-                -> Sink (Stream i s t a) m ()
+             => PayloadQ a
+             -> Sink (Stream i s t a) m ()
 payloadQSink (MkPayloadQ !ringRef) =
     awaitForever go
   where
@@ -81,22 +83,21 @@ payloadQSink (MkPayloadQ !ringRef) =
                 modifyTVar ringRef . Ring.push . Just
 
 payloadQSource :: (Random i, NFData c, HasDuration c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, NFData t, NFData s)
-                  => NominalDiffTime
-                  -> NominalDiffTime
-                  -> PayloadQ c
-                  -> Source m (Stream i s (Ticks r t) (Discontinous c))
+               => NominalDiffTime
+               -> NominalDiffTime
+               -> PayloadQ c
+               -> Source m (Stream i s (Ticks r t) (Discontinous c))
 payloadQSource pollIntervall pTime (MkPayloadQ ringRef) =
     evalStateC (MkPollPayloadSourceSt 0 0 0) $ do
         yieldStart
         go
   where
-    go =
-        do
-          !restTime <- use ppPollAdjust
-          (!bufs, !dt') <- pollNextBuffers restTime
-          ppPollAdjust .= dt'
-          mapM_ yieldNextBuffer bufs
-          go
+    go = do
+        !restTime <- use ppPollAdjust
+        (!bufs, !dt') <- pollNextBuffers restTime
+        ppPollAdjust .= dt'
+        mapM_ yieldNextBuffer bufs
+        go
     yieldStart = (MkFrameCtx <$> liftBase randomIO
                              <*> use ppTicks
                              <*> use ppSeqNum) >>=

@@ -3,8 +3,6 @@ module Data.MediaBus.ReorderSpec ( spec ) where
 import           Conduit
 import           Data.Conduit.List
 import           Data.MediaBus
-import           Data.MediaBus.Internal.Series
-import           Data.MediaBus.Internal.Conduit
 import           Test.Hspec
 import           Data.Proxy
 import           Data.Word

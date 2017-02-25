@@ -12,7 +12,7 @@
 -- the major value was currently @255@ and the minor value was @4@, than adding
 -- @1@ to the 'BiIndex' would make the next 'major' value to be @0@ while
 -- 'minor' would be @5@.
-module Data.MediaBus.Internal.BiIndex
+module Data.MediaBus.BiIndex
     ( BiIndex()
     , baseIndex
     , mkBiIndex

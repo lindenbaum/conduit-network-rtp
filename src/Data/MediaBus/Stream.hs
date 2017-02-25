@@ -45,7 +45,7 @@ import           Data.MediaBus.SourceId
 import           Data.MediaBus.Sequence
 import           Data.MediaBus.Payload
 import           Data.MediaBus.Clock
-import           Data.MediaBus.Internal.Series
+import           Data.MediaBus.Series
 import           Control.Monad.Writer.Strict   ( tell )
 import           Data.Maybe
 import           Data.Word

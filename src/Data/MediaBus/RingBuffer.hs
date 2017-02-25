@@ -1,6 +1,6 @@
 -- | A circular buffer with a focus on high performance(TODO), useful e.g. for
 -- bounded queues, e.g. in multimedia applications.
-module Data.MediaBus.Internal.RingBuffer
+module Data.MediaBus.RingBuffer
     ( -- * Ring Buffer Data Type
       RingBuffer()
       -- ** Constructor

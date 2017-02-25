@@ -1,4 +1,4 @@
-module Data.MediaBus.Internal.Conduit
+module Data.MediaBus.Conduit
     ( overRightC
     , fmapMC
     , annotateTypeC

@@ -1,8 +1,8 @@
 {-# LANGUAGE NoOverloadedStrings #-}
 
-module Data.MediaBus.Internal.RingBufferSpec ( spec ) where
+module Data.MediaBus.RingBufferSpec ( spec ) where
 
-import           Data.MediaBus.Internal.RingBuffer
+import           Data.MediaBus.RingBuffer
 import           Test.Hspec
 import           Test.QuickCheck
 import           Data.Maybe

@@ -17,10 +17,10 @@ import           Data.MediaBus.Rtp.Packet
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Stream
 import           Data.MediaBus.SourceId
-import           Data.MediaBus.Internal.Conduit
+import           Data.MediaBus.Conduit
 import           Data.MediaBus.Transcoder
 import           Data.MediaBus.Transport.Udp
-import           Data.MediaBus.Internal.AsyncConduit
+import           Data.MediaBus.AsyncConduit
 import           Data.Streaming.Network              ( HostPreference )
 import           Data.Time.Clock
 import           Data.Word

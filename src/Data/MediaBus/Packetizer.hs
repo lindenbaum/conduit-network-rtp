@@ -8,7 +8,7 @@ module Data.MediaBus.Packetizer
 import           Conduit
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Clock
-import           Data.MediaBus.Internal.Series
+import           Data.MediaBus.Series
 import           Data.Time.Clock
 import           Data.Default
 import           Control.Monad.State.Strict

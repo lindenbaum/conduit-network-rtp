@@ -1,7 +1,6 @@
 module Data.MediaBus.Audio.ResampleSpec ( spec ) where
 
 import           Data.MediaBus
-import           Data.MediaBus.Internal.Series
 import           Conduit
 import           Test.QuickCheck
 import           Test.Hspec

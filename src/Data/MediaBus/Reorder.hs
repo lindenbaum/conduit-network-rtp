@@ -6,8 +6,8 @@ module Data.MediaBus.Reorder
 
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Sequence
-import           Data.MediaBus.Internal.OrderedBy
-import           Data.MediaBus.Internal.Series
+import           Data.MediaBus.OrderedBy
+import           Data.MediaBus.Series
 import qualified Data.Set                         as Set
 import           Conduit
 import           Control.Lens

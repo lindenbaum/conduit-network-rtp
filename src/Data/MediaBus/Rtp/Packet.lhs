@@ -18,7 +18,7 @@ TODO: Add RTCP support
 > import Text.Printf
 > import Data.Word
 > import Data.Bits
-> import Data.MediaBus.Internal.Monotone
+> import Data.MediaBus.Monotone
 > import Data.MediaBus.Sequence
 > import Control.Lens
 > import Data.MediaBus.Sample

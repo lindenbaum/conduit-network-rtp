@@ -38,8 +38,8 @@ import           Control.Monad.State.Strict
 import           Data.Default
 import           Data.Function                   ( on )
 import           Data.Kind
-import           Data.MediaBus.Internal.Monotone
-import           Data.MediaBus.Internal.Series
+import           Data.MediaBus.Monotone
+import           Data.MediaBus.Series
 import           Data.Proxy
 import           Data.Time.Calendar
 import           Data.Time.Clock

@@ -5,9 +5,8 @@ import           Data.Conduit.List
 import           Conduit
 import           Test.QuickCheck
 import           Data.MediaBus
-import           Data.MediaBus.Internal.Series
 import           Data.Word
-import qualified Data.Vector.Storable          as V
+import qualified Data.Vector.Storable as V
 import           Control.Lens
 
 spec :: Spec
@@ -26,8 +25,9 @@ spec = describe "repacketizeC" $ do
         property inputPacketsHaveAnIntegralMultipleOfTheDesiredDurationTicks
 
 inputPacketsAlreadyHaveTheDesiredDuration (Positive len) count =
-    let inputs = mkTestStartPacket 0 len : [ mkTestPacket n len
-                 | n <- [0 .. count] ]
+    let inputs = mkTestStartPacket 0 len :
+            [ mkTestPacket n len
+            | n <- [0 .. count] ]
     in
         length (runRepacketize inputs len) `shouldBe` length inputs
 
@@ -38,27 +38,31 @@ inputPacketsHaveAnIntegralMultipleOfTheDesiredDuration (Positive len) count (Pos
         (length (runRepacketize inputs len) `div` mult) `shouldBe` length inputs
 
 inputPacketsAreBiggerAndNotDivisibleByTheDesiredDuration (Positive count) =
-    let inputs = mkTestStartPacket 0 25 : [ mkTestPacket n 25
-                 | n <- [0 .. count] ]
+    let inputs = mkTestStartPacket 0 25 :
+            [ mkTestPacket n 25
+            | n <- [0 .. count] ]
     in
         length (runRepacketize inputs (10 :: Word8)) `shouldBe` length inputs +
             2 * (fromIntegral count + 1)
 
 inputPacketsAlreadyHaveTheDesiredDurationSeqnum (Positive len) count =
-    let inputs = mkTestStartPacket 0 len : [ mkTestPacket n len
-                 | n <- [0 .. count] ]
+    let inputs = mkTestStartPacket 0 len :
+            [ mkTestPacket n len
+            | n <- [0 .. count] ]
     in
         seqNumStrictlyMonotoneIncreasing $ runRepacketize inputs len
 
 inputPacketsHaveAnIntegralMultipleOfTheDesiredDurationSeqnum (Positive len) count (Positive mult) =
-    let inputs = mkTestStartPacket 0 (len * mult) : [ mkTestPacket n (len * mult)
-                 | n <- [0 .. count] ]
+    let inputs = mkTestStartPacket 0 (len * mult) :
+            [ mkTestPacket n (len * mult)
+            | n <- [0 .. count] ]
     in
         seqNumStrictlyMonotoneIncreasing $ runRepacketize inputs len
 
 inputPacketsHaveAnIntegralMultipleOfTheDesiredDurationTicks (Positive len) count (Positive mult) =
-    let inputs = mkTestStartPacket 0 (len * mult) : [ mkTestPacket n (len * mult)
-                 | n <- [0 .. count] ]
+    let inputs = mkTestStartPacket 0 (len * mult) :
+            [ mkTestPacket n (len * mult)
+            | n <- [0 .. count] ]
     in
         ticksStrictlyMonotoneIncreasing (fromIntegral len) $
             runRepacketize inputs len
@@ -66,12 +70,14 @@ inputPacketsHaveAnIntegralMultipleOfTheDesiredDurationTicks (Positive len) count
 seqNumStrictlyMonotoneIncreasing outs =
     let res = view seqNum <$> outs
     in
-        zipWith (-) (Prelude.drop 2 res) (Prelude.drop 1 res) `shouldSatisfy` all (== 1)
+        zipWith (-) (Prelude.drop 2 res) (Prelude.drop 1 res) `shouldSatisfy`
+            all (== 1)
 
 ticksStrictlyMonotoneIncreasing dur outs =
     let res = view timestamp' <$> outs
     in
-        zipWith (-) (Prelude.drop 2 res) (Prelude.drop 1 res) `shouldSatisfy` all (== dur)
+        zipWith (-) (Prelude.drop 2 res) (Prelude.drop 1 res) `shouldSatisfy`
+            all (== dur)
 
 runRepacketize inputs len =
     runConduitPure (sourceList inputs .|

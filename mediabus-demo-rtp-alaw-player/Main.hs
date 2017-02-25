@@ -1,10 +1,9 @@
 module Main where
 
-import           Data.MediaBus.Internal.AsyncConduit
+import           Data.MediaBus.AsyncConduit
 import           Control.Concurrent.Async.Lifted
 import           Conduit
 import           Data.MediaBus
-import           Data.MediaBus.Internal.Conduit
 import           Data.MediaBus.Applications.RtpAlawAudio
 
 {- Send test data with:

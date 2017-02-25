@@ -1,6 +1,6 @@
-module Data.MediaBus.Internal.BiIndexSpec ( spec ) where
+module Data.MediaBus.BiIndexSpec ( spec ) where
 
-import           Data.MediaBus.Internal.BiIndex
+import           Data.MediaBus.BiIndex
 import           Test.Hspec
 import           Test.QuickCheck
 import           Control.Lens

@@ -7,8 +7,6 @@ import           Data.Conduit.List
 import           Data.MediaBus
 import           Control.Monad
 import           Data.Word
-import           Data.MediaBus.Internal.Conduit
-import           Data.MediaBus.Internal.Series
 import           Control.Lens
 
 spec :: Spec

@@ -8,8 +8,8 @@ module Data.MediaBus.Sequence
 
 import           Test.QuickCheck                 ( Arbitrary(..) )
 import           Conduit
-import           Data.MediaBus.Internal.Monotone
-import           Data.MediaBus.Internal.Series
+import           Data.MediaBus.Monotone
+import           Data.MediaBus.Series
 import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Default

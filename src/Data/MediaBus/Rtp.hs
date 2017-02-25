@@ -15,7 +15,7 @@ import           Data.MediaBus.Audio.Alaw
 import           Data.MediaBus.Clock
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Stream
-import           Data.MediaBus.Internal.Series
+import           Data.MediaBus.Series
 import qualified Data.MediaBus.Rtp.Packet      as Rtp
 import           Control.Monad
 import           Data.Default

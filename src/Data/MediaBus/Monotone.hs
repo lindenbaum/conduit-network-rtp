@@ -1,4 +1,4 @@
-module Data.MediaBus.Internal.Monotone
+module Data.MediaBus.Monotone
     ( LocalOrd(..)
     ) where
 
