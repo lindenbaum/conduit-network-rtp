@@ -1,10 +1,9 @@
 module Data.MediaBus.Applications.RtpAlawAudio
-    ( periodicRtpAlawUdpReceiver16kHzS16OrSilence
-    , rtpAlawUdpReceiver16kHzS16
+    ( rtpAlawUdpReceiver16kHzS16
     ) where
 
 import           Conduit
-import           Control.Monad                       ( void )
+import           Control.Monad                   ( void )
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Resample
 import           Data.MediaBus.BlankMedia
@@ -21,33 +20,18 @@ import           Data.MediaBus.Conduit
 import           Data.MediaBus.Transcoder
 import           Data.MediaBus.Transport.Udp
 import           Data.MediaBus.AsyncConduit
-import           Data.Streaming.Network              ( HostPreference )
+import           Data.Streaming.Network          ( HostPreference )
 import           Data.Time.Clock
 import           Data.Word
 import           Control.Concurrent.Async.Lifted
 import           Data.Proxy
-import qualified Data.ByteString                     as B
-import           Network.Socket                      ( SockAddr )
+import qualified Data.ByteString                 as B
+import           Network.Socket                  ( SockAddr )
 
-periodicRtpAlawUdpReceiver16kHzS16OrSilence :: (MonadResource m, MonadBaseControl IO m)
-                                            => Int
-                                            -> HostPreference
-                                            -> NominalDiffTime
-                                            -> Int
-                                            -> m ( Async ()
-                                                 , Source m (Stream RtpSsrc RtpSeqNum (Ticks 16000 Word64) (SampleBuffer (S16 16000)))
-                                                 )
-periodicRtpAlawUdpReceiver16kHzS16OrSilence !udpListenPort !udpListenHostIP !ptime !frameQLength = do
-    let !pollIntervall = 0.5 * fromIntegral frameQLength * ptime
-    (!asrc, !src) <- mkDecoupledSource frameQLength
-                                       pollIntervall
-                                       ptime
-                                       (rtpAlawUdpReceiver16kHzS16 udpListenPort
-                                                                   udpListenHostIP
-                                                                   ptime
-                                                                   frameQLength)
+-- TODO use 'Segment' to automatically derive the ptime
+-- | A segment is some content with a fixed (type level) duration.
+newtype Segment duration c = MkSegment { staticSegmentValue :: c }
 
-    return (void asrc, src .| concealMissing blankFor)
 
 rtpAlawUdpReceiver16kHzS16 :: MonadResource m
                            => Int

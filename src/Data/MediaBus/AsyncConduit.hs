@@ -1,6 +1,5 @@
 module Data.MediaBus.AsyncConduit
-    ( mkDecoupledSource
-    , connectConcurrentlyPolledSourceToSink
+    ( withAsyncPolledSource
     , PayloadQ()
     , mkPayloadQ
     , payloadQSink
@@ -34,43 +33,33 @@ data PollPayloadSourceSt s t =
 
 makeLenses ''PollPayloadSourceSt
 
-mkDecoupledSource :: (Default c, HasDuration c, NFData c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Random i, Random t, Random s, MonadResource m, NFData s, NFData t)
-                  => Int
-                  -> NominalDiffTime
-                  -> NominalDiffTime
-                  -> Source m (Stream i s (Ticks r t) c)
-                  -> m ( Async ()
-                       , Source m (Stream i s (Ticks r t) (Discontinous c))
-                       )
-mkDecoupledSource !frameQueueLen !pollIntervall !pTime !src = do
-    !ringRef <- mkPayloadQ frameQueueLen
-    !a <- async (runConduit (src .| payloadQSink ringRef))
-    return (void a, payloadQSource pollIntervall pTime ringRef)
+withAsyncPolledSource :: (MonadResource m, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Default c, HasDuration c, NFData c, NFData s, NFData t, Random i, Random t, Random s)
+                      => Int
+                      -> NominalDiffTime
+                      -> Source m (Stream i s (Ticks r t) c)
+                      -> (( Async ()
+                          , Source m (Stream i s (Ticks r t) (Discontinous c))
+                          )
+                          -> m o)
+                      -> m o
+withAsyncPolledSource !frameQueueLen !pTime !src !f = do
+    !pq <- mkPayloadQ frameQueueLen pTime
+    withAsync (runConduit (src .| payloadQSink pq))
+              (\a -> f (void a, payloadQSource pq))
 
-connectConcurrentlyPolledSourceToSink :: forall c m r t s i.
-                                      (Default c, HasDuration c, NFData c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Random i, Random t, Random s, NFData t, NFData s)
-                                      => Int
-                                      -> NominalDiffTime
-                                      -> NominalDiffTime
-                                      -> Source m (Stream i s (Ticks r t) c)
-                                      -> Sink (Stream i s (Ticks r t) (Discontinous c)) m ()
-                                      -> m ()
-connectConcurrentlyPolledSourceToSink frameQueueLen pollIntervall pTime src sink = do
-    ringRef <- mkPayloadQ frameQueueLen
-    void $
-        race (src $$ payloadQSink ringRef)
-             (payloadQSource pollIntervall pTime ringRef $$
-                  sink)
+data PayloadQ a = MkPayloadQ { _payloadQPayloadMinDuration :: !NominalDiffTime
+                             , _payloadQPollIntervall      :: !NominalDiffTime
+                             , _payloadQRing               :: !(TVar (Ring.RingBuffer (Maybe a)))
+                             }
 
-newtype PayloadQ a = MkPayloadQ (TVar (Ring.RingBuffer (Maybe a)))
-
-mkPayloadQ :: (MonadBaseControl IO m) => Int -> m (PayloadQ a)
-mkPayloadQ qlen = liftBase (MkPayloadQ <$> newTVarIO (Ring.newRingBuffer qlen))
+mkPayloadQ :: MonadBaseControl IO m => Int -> NominalDiffTime -> m (PayloadQ a)
+mkPayloadQ qlen payloadMinDuration =
+    MkPayloadQ payloadMinDuration (fromIntegral qlen * 0.5 * payloadMinDuration) <$> liftBase (newTVarIO (Ring.newRingBuffer qlen))
 
 payloadQSink :: (NFData a, MonadBaseControl IO m)
              => PayloadQ a
              -> Sink (Stream i s t a) m ()
-payloadQSink (MkPayloadQ !ringRef) =
+payloadQSink (MkPayloadQ _ _ !ringRef) =
     awaitForever go
   where
     go !x = do
@@ -83,11 +72,9 @@ payloadQSink (MkPayloadQ !ringRef) =
                 modifyTVar ringRef . Ring.push . Just
 
 payloadQSource :: (Random i, NFData c, HasDuration c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, NFData t, NFData s)
-               => NominalDiffTime
-               -> NominalDiffTime
-               -> PayloadQ c
+               => PayloadQ c
                -> Source m (Stream i s (Ticks r t) (Discontinous c))
-payloadQSource pollIntervall pTime (MkPayloadQ ringRef) =
+payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
     evalStateC (MkPollPayloadSourceSt 0 0 0) $ do
         yieldStart
         go

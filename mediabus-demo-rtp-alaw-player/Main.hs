@@ -20,40 +20,25 @@ maxFrames :: Int
 maxFrames = 15000
 
 main :: IO ()
-main = mainSync
+main = mainASync
 
 mainASync :: IO ()
-mainASync = runResourceT $ do
-    (asrc, src) <- periodicRtpAlawUdpReceiver16kHzS16OrSilence 10000
-                                                               "127.0.01"
-                                                               (10 / 1000)
-                                                               20
-    runConduit (src .| debugExitAfter maxFrames .|
-                    streamDebugPlaybackSink)
-    cancel asrc
-
-mainASync2 :: IO ()
-mainASync2 = do
-    let pTime = 10 / 1000
-        qlen = 20
-        pollIntervall = 0.5 * fromIntegral qlen * pTime
-    runResourceT $
-        connectConcurrentlyPolledSourceToSink qlen
-                                              pollIntervall
-                                              pTime
-                                              (rtpAlawUdpReceiver16kHzS16 10000
-                                                                          "127.0.01"
-                                                                          pTime
-                                                                          qlen)
-                                              (concealMissing blankFor .|
-                                                   debugExitAfter maxFrames .|
-                                                   streamDebugPlaybackSink)
-
+mainASync = runResourceT $
+    withAsyncPolledSource 20
+                          (10 / 1000)
+                          (rtpAlawUdpReceiver16kHzS16 10000
+                                                      "127.0.01"
+                                                      (10 / 1000)
+                                                      5)
+                          (\(_, src) -> runConduit (src .|
+                                                        debugExitAfter maxFrames .|
+                                                        concealMissing blankFor .|
+                                                        streamDebugPlaybackSink))
 
 mainSync :: IO ()
 mainSync = runConduitRes (rtpAlawUdpReceiver16kHzS16 10000
-                                                            "127.0.01"
-                                                            (10 / 1000)
-                                                            20 .|
+                                                     "127.0.01"
+                                                     (10 / 1000)
+                                                     20 .|
                               debugExitAfter maxFrames .|
                               streamDebugPlaybackSink)
