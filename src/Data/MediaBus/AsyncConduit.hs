@@ -96,11 +96,11 @@ payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
 
     pollNextBuffers !restTime =
         liftBase $ do
-            !(t0 :: Time UtcClock) <- now
+            !(t0 :: ClockTime UtcClock) <- now
             let !pollIntervallAdjustment =
                     nominalDiffTime # restTime
             threadDelay (_ticks (pollIntervallMicros - pollIntervallAdjustment))
-            !dt <- _utcTimeDiff <$> timeSince t0
+            !dt <- _utcClockTimeDiff <$> timeSince t0
             (!bufs, !dt', !timeMissing, !ringSize) <- atomically $ do
                                                           !ring <- readTVar ringRef
                                                           let (!bufs, !ring', !dt', !timeMissing) =

@@ -52,3 +52,8 @@ class CanSplitAfterDuration a where
     -- already shorter than the given duration, return `Nothing`.
     splitAfterDuration :: NominalDiffTime -> a -> Maybe (a, a)-- TODO make the repacketization create ONLY valid sized packets, even if that means dropping content
                                                               -- TODO allow repacketization to combine the packets
+
+
+-- TODO use 'Segment' to automatically derive the ptime
+-- | A segment is some content with a fixed (type level) duration.
+newtype Segment duration c = MkSegment { staticSegmentValue :: c }

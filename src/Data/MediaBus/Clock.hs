@@ -16,9 +16,9 @@ module Data.MediaBus.Clock
     , timeSince
     , UtcClock(..)
     , useUtcClock
-    , _utcTimeDiff
-    , _utcTime
-    , utcTimeDiff
+    , _utcClockTimeDiff
+    , _utcClockTime
+    , utcClockTimeDiff
     , STicksK(..)
     , type STicksGetRate
     , type STicksGetTicks
@@ -150,17 +150,17 @@ deriveFrameTimestamp t0 =
         yield (sb & timestamp .~ t)
 
 -- | Clocks can generate reference times, and they can convert these to tickss. Tickss are mere integrals
-class (Default (TimeDiff c), Ord (TimeDiff c), Eq (TimeDiff c), Num (TimeDiff c), Show (Time c), Eq (Time c), Show (TimeDiff c), LocalOrd (TimeDiff c)) =>
+class (Default (ClockTimeDiff c), Ord (ClockTimeDiff c), Eq (ClockTimeDiff c), Num (ClockTimeDiff c), Show (ClockTime c), Eq (ClockTime c), Show (ClockTimeDiff c), LocalOrd (ClockTimeDiff c)) =>
       IsClock c where
-    data Time c
-    data TimeDiff c
+    data ClockTime c
+    data ClockTimeDiff c
     type MonadClock c (m :: Type -> Type) :: Constraint
-    now :: MonadClock c m => m (Time c)
-    timeAsTimeDiff :: Time c -> TimeDiff c
-    diffTime :: Time c -> Time c -> TimeDiff c
-    timeAddTimeDiff :: Time c -> TimeDiff c -> Time c
+    now :: MonadClock c m => m (ClockTime c)
+    timeAsTimeDiff :: ClockTime c -> ClockTimeDiff c
+    diffTime :: ClockTime c -> ClockTime c -> ClockTimeDiff c
+    timeAddTimeDiff :: ClockTime c -> ClockTimeDiff c -> ClockTime c
 
-timeSince :: (IsClock c, MonadClock c m, Monad m) => Time c -> m (TimeDiff c)
+timeSince :: (IsClock c, MonadClock c m, Monad m) => ClockTime c -> m (ClockTimeDiff c)
 timeSince t0 = do
     t1 <- now
     return (diffTime t1 t0)
@@ -174,49 +174,49 @@ useUtcClock :: Proxy UtcClock
 useUtcClock = Proxy
 
 instance IsClock UtcClock where
-    newtype Time UtcClock = MkUtcTime{_utcTime :: UTCTime}
+    newtype ClockTime UtcClock = MkUtcClockTime{_utcClockTime :: UTCTime}
                       deriving (Eq, Generic)
-    newtype TimeDiff UtcClock = MkUtcTimeDiff{_utcTimeDiff ::
+    newtype ClockTimeDiff UtcClock = MkUtcClockTimeDiff{_utcClockTimeDiff ::
                                           NominalDiffTime}
                           deriving (Ord, Eq, Num, Generic)
     type MonadClock UtcClock m = MonadIO m
-    now = MkUtcTime <$> liftIO getCurrentTime
-    timeAsTimeDiff (MkUtcTime ref) =
-        MkUtcTimeDiff $ diffUTCTime ref $ UTCTime (toEnum 0) 0
-    timeAddTimeDiff (MkUtcTime t) (MkUtcTimeDiff dt) =
-        MkUtcTime (addUTCTime dt t)
-    diffTime (MkUtcTime later) (MkUtcTime sooner) =
-        MkUtcTimeDiff $ diffUTCTime later sooner
+    now = MkUtcClockTime <$> liftIO getCurrentTime
+    timeAsTimeDiff (MkUtcClockTime ref) =
+        MkUtcClockTimeDiff $ diffUTCTime ref $ UTCTime (toEnum 0) 0
+    timeAddTimeDiff (MkUtcClockTime t) (MkUtcClockTimeDiff dt) =
+        MkUtcClockTime (addUTCTime dt t)
+    diffTime (MkUtcClockTime later) (MkUtcClockTime sooner) =
+        MkUtcClockTimeDiff $ diffUTCTime later sooner
 
-instance NFData (Time UtcClock)
+instance NFData (ClockTime UtcClock)
 
-instance Show (Time UtcClock) where
-    show (MkUtcTime t) = show t
+instance Show (ClockTime UtcClock) where
+    show (MkUtcClockTime t) = show t
 
-instance Show (TimeDiff UtcClock) where
-    show (MkUtcTimeDiff t) =
+instance Show (ClockTimeDiff UtcClock) where
+    show (MkUtcClockTimeDiff t) =
         "dt:" ++ show t
 
-instance NFData (TimeDiff UtcClock)
+instance NFData (ClockTimeDiff UtcClock)
 
-instance Default (TimeDiff UtcClock) where
-    def = MkUtcTimeDiff $ fromInteger def
+instance Default (ClockTimeDiff UtcClock) where
+    def = MkUtcClockTimeDiff $ fromInteger def
 
-instance Arbitrary (Time UtcClock) where
-    arbitrary = MkUtcTime <$> (UTCTime <$> (ModifiedJulianDay <$> arbitrary)
+instance Arbitrary (ClockTime UtcClock) where
+    arbitrary = MkUtcClockTime <$> (UTCTime <$> (ModifiedJulianDay <$> arbitrary)
                                        <*> (fromInteger <$> arbitrary))
 
-instance Arbitrary (TimeDiff UtcClock) where
-    arbitrary = MkUtcTimeDiff . fromInteger <$> arbitrary
+instance Arbitrary (ClockTimeDiff UtcClock) where
+    arbitrary = MkUtcClockTimeDiff . fromInteger <$> arbitrary
 
-utcTimeDiff :: Lens' (TimeDiff UtcClock) NominalDiffTime
-utcTimeDiff = lens _utcTimeDiff (const MkUtcTimeDiff)
+utcClockTimeDiff :: Lens' (ClockTimeDiff UtcClock) NominalDiffTime
+utcClockTimeDiff = lens _utcClockTimeDiff (const MkUtcClockTimeDiff)
 
-instance LocalOrd (TimeDiff UtcClock) where
+instance LocalOrd (ClockTimeDiff UtcClock) where
     succeeds = succeeds `on` roundToSeconds
       where
-        roundToSeconds = round . (/ 1000000000000) . _utcTimeDiff
-        roundToSeconds :: TimeDiff UtcClock -> Word64
+        roundToSeconds = round . (/ 1000000000000) . _utcClockTimeDiff
+        roundToSeconds :: ClockTimeDiff UtcClock -> Word64
 
 data STicksK = STicks Nat Nat
 

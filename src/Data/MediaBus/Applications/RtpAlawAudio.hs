@@ -21,10 +21,6 @@ import           Data.Proxy
 import qualified Data.ByteString                 as B
 import           Network.Socket                  ( SockAddr )
 
--- TODO use 'Segment' to automatically derive the ptime
--- | A segment is some content with a fixed (type level) duration.
-newtype Segment duration c = MkSegment { staticSegmentValue :: c }
-
 rtpAlawUdpReceiver16kHzS16 :: MonadResource m
                            => Int
                            -> HostPreference
@@ -32,7 +28,7 @@ rtpAlawUdpReceiver16kHzS16 :: MonadResource m
                            -> Int
                            -> Source m (Stream RtpSsrc RtpSeqNum (Ticks 16000 Word64) (SampleBuffer (S16 16000)))
 rtpAlawUdpReceiver16kHzS16 !udpListenPort !udpListenIP !ptime !reorderBufferSize =
-    annotateTypeSource (Proxy :: Proxy (Stream (SourceId (Maybe SockAddr)) RtpSeqNum (TimeDiff UtcClock) B.ByteString))
+    annotateTypeSource (Proxy :: Proxy (Stream (SourceId (Maybe SockAddr)) RtpSeqNum (ClockTimeDiff UtcClock) B.ByteString))
                        (udpDatagramSource useUtcClock udpListenPort udpListenIP) .|
         rtpSource .|
         rtpPayloadDemux [ (8, alawPayloadHandler) ] mempty .|
