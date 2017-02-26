@@ -23,7 +23,7 @@ main = mainASync
 
 mainASync :: IO ()
 mainASync = runResourceT $
-    withAsyncPolledSource 20
+    withAsyncPolledSource 50
                           (10 / 1000)
                           (rtpAlawUdpReceiver16kHzS16 10000
                                                       "127.0.01"
