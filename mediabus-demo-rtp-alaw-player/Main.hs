@@ -1,7 +1,6 @@
 module Main where
 
 import           Data.MediaBus.AsyncConduit
-import           Control.Concurrent.Async.Lifted
 import           Conduit
 import           Data.MediaBus
 import           Data.MediaBus.Applications.RtpAlawAudio
@@ -31,7 +30,7 @@ mainASync = runResourceT $
                                                       (10 / 1000)
                                                       5)
                           (\(_, src) -> runConduit (src .|
-                                                        debugExitAfter maxFrames .|
+                                                        exitAfterC maxFrames .|
                                                         concealMissing blankFor .|
                                                         streamDebugPlaybackSink))
 
@@ -40,5 +39,5 @@ mainSync = runConduitRes (rtpAlawUdpReceiver16kHzS16 10000
                                                      "127.0.01"
                                                      (10 / 1000)
                                                      20 .|
-                              debugExitAfter maxFrames .|
+                              exitAfterC maxFrames .|
                               streamDebugPlaybackSink)

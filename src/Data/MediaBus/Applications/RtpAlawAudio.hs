@@ -1,14 +1,9 @@
-module Data.MediaBus.Applications.RtpAlawAudio
-    ( rtpAlawUdpReceiver16kHzS16
-    ) where
+module Data.MediaBus.Applications.RtpAlawAudio ( rtpAlawUdpReceiver16kHzS16 ) where
 
 import           Conduit
-import           Control.Monad                   ( void )
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Resample
-import           Data.MediaBus.BlankMedia
 import           Data.MediaBus.Clock
-import           Data.MediaBus.Discontinous
 import           Data.MediaBus.Packetizer
 import           Data.MediaBus.Reorder
 import           Data.MediaBus.Rtp
@@ -19,11 +14,9 @@ import           Data.MediaBus.SourceId
 import           Data.MediaBus.Conduit
 import           Data.MediaBus.Transcoder
 import           Data.MediaBus.Transport.Udp
-import           Data.MediaBus.AsyncConduit
 import           Data.Streaming.Network          ( HostPreference )
 import           Data.Time.Clock
 import           Data.Word
-import           Control.Concurrent.Async.Lifted
 import           Data.Proxy
 import qualified Data.ByteString                 as B
 import           Network.Socket                  ( SockAddr )
@@ -31,7 +24,6 @@ import           Network.Socket                  ( SockAddr )
 -- TODO use 'Segment' to automatically derive the ptime
 -- | A segment is some content with a fixed (type level) duration.
 newtype Segment duration c = MkSegment { staticSegmentValue :: c }
-
 
 rtpAlawUdpReceiver16kHzS16 :: MonadResource m
                            => Int

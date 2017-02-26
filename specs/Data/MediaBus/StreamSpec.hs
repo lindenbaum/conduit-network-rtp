@@ -18,7 +18,7 @@ spec = describe "Stream conduits" $
 _helloWorld :: IO ()
 _helloWorld = void $
     runConduit (yieldMany ("Hello world" :: String) .|
-                    dbgShowC 1 "YO" .|
+                    traceShowC 1 "YO" .|
                     consume)
 
 _sampleSomeStream :: IO ALittleOutOfOrder
@@ -29,13 +29,13 @@ _yieldStream :: Monad m
              -> Source m (Stream () (SeqNum Word16) () ())
 _yieldStream (MkALittleOutOfOrder frames) =
     yieldMany frames .|
-        dbgShowC 1 "ORIGINAL"
+        traceShowC 1 "ORIGINAL"
 
 _reorderSomeFrames = void $
     _sampleSomeStream >>=
         (\fs -> runConduit (_yieldStream fs .|
                                 reorderFramesBySeqNumC 2 .|
-                                dbgShowC 1 "     ORDERED" .|
+                                traceShowC 1 "     ORDERED" .|
                                 consume))
 
 newtype ALittleOutOfOrder =
@@ -51,7 +51,7 @@ instance Arbitrary ALittleOutOfOrder where
         loop (MkSeqNum lastSeq) n acc
             | n == 0 = return acc
             | otherwise = do
-                  nextSeq' <- choose (lastSeq +1, lastSeq + 2)
+                  nextSeq' <- choose (lastSeq + 1, lastSeq + 2)
                   ts <- arbitrary
                   c <- arbitrary
                   let nextSeq = MkSeqNum nextSeq'
