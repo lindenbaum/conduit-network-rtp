@@ -73,14 +73,10 @@ payloadQSink (MkPayloadQ _ _ !ringRef) =
       where
         pushInRing !buf' = liftBase $ do
             !buf <- evaluate $ withStrategy rdeepseq buf'
-            !mpurged <- atomically $ do
-                           isFull <- isFullTBQueue ringRef
-                           purged <- if isFull
-                                     then Just <$> readTBQueue ringRef
-                                     else return Nothing
-                           writeTBQueue ringRef buf
-                           return purged
-            maybe (return ()) (traceM . printf "*** PURGED: %s" . show) mpurged
+            atomically $ do
+                isFull <- isFullTBQueue ringRef
+                when isFull (void $ readTBQueue ringRef)
+                writeTBQueue ringRef buf
 
 payloadQSource :: (Random i, NFData c, HasStaticDuration c, HasDuration c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, NFData t, NFData s)
                => PayloadQ c
