@@ -18,7 +18,7 @@ import           Control.Lens
 import           Test.QuickCheck
 import           Data.Bits
 import           Data.Typeable
-import           Data.MediaBus.Clock
+import           Data.MediaBus.Ticks
 import           GHC.TypeLits
 import           Data.Function                ( on )
 import           GHC.Generics                 ( Generic )

@@ -1,9 +1,14 @@
-module Data.MediaBus.BlankMedia ( CanGenerateBlankMedia(..), CanBeBlank(..) ) where
+module Data.MediaBus.BlankMedia
+    ( CanGenerateBlankMedia(..)
+    , CanBeBlank(..)
+    ) where
 
-import           Data.MediaBus.Clock
+import           Data.MediaBus.Ticks
+import           Data.MediaBus.Segment
 import           Data.Time.Clock
 import           GHC.TypeLits
 import           Control.Lens
+import           Data.Proxy
 
 class CanGenerateBlankMedia a where
     blankFor :: NominalDiffTime -> a
@@ -13,3 +18,7 @@ class CanGenerateBlankMedia a where
 
 class CanBeBlank a where
     blank :: a
+
+instance (HasStaticDuration d, CanGenerateBlankMedia a) =>
+         CanBeBlank (Segment d a) where
+    blank = MkSegment (blankFor (getStaticDuration (Proxy :: Proxy d)))

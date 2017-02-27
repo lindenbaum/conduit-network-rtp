@@ -12,7 +12,7 @@ import           Conduit
 import           Control.Lens
 import qualified Data.ByteString               as B
 import           Data.MediaBus.Audio.Alaw
-import           Data.MediaBus.Clock
+import           Data.MediaBus.Ticks
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Series

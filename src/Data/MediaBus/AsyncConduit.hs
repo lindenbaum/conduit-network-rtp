@@ -20,10 +20,12 @@ import           Data.MediaBus.Clock
 import           Data.MediaBus.Stream
 import           Data.MediaBus.Discontinous
 import qualified Data.MediaBus.RingBuffer        as Ring
+import           Data.MediaBus.Ticks
 import           Control.Lens
 import           Text.Printf
 import           Data.Default
 import           Debug.Trace
+import           Data.Proxy
 
 data PollPayloadSourceSt s t =
       MkPollPayloadSourceSt { _ppSeqNum     :: !s
@@ -33,28 +35,32 @@ data PollPayloadSourceSt s t =
 
 makeLenses ''PollPayloadSourceSt
 
-withAsyncPolledSource :: (MonadResource m, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Default c, HasDuration c, NFData c, NFData s, NFData t, Random i, Random t, Random s)
+withAsyncPolledSource :: (MonadResource m, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Default c, HasStaticDuration c, HasDuration c, NFData c, NFData s, NFData t, Random i, Random t, Random s)
                       => Int
-                      -> NominalDiffTime
                       -> Source m (Stream i s (Ticks r t) c)
                       -> (( Async ()
                           , Source m (Stream i s (Ticks r t) (Discontinous c))
                           )
                           -> m o)
                       -> m o
-withAsyncPolledSource !frameQueueLen !pTime !src !f = do
-    !pq <- mkPayloadQ frameQueueLen pTime
+withAsyncPolledSource !frameQueueLen !src !f = do
+    !pq <- mkPayloadQ frameQueueLen
     withAsync (runConduit (src .| payloadQSink pq))
               (\a -> f (void a, payloadQSource pq))
 
-data PayloadQ a = MkPayloadQ { _payloadQPayloadMinDuration :: !NominalDiffTime
-                             , _payloadQPollIntervall      :: !NominalDiffTime
-                             , _payloadQRing               :: !(TVar (Ring.RingBuffer (Maybe a)))
+data PayloadQ a = MkPayloadQ { _payloadQSegmentDuration :: !NominalDiffTime
+                             , _payloadQPollIntervall   :: !NominalDiffTime
+                             , _payloadQRing            :: !(TMVar (Ring.RingBuffer (Maybe a)))
                              }
 
-mkPayloadQ :: MonadBaseControl IO m => Int -> NominalDiffTime -> m (PayloadQ a)
-mkPayloadQ qlen payloadMinDuration =
-    MkPayloadQ payloadMinDuration (fromIntegral qlen * 0.5 * payloadMinDuration) <$> liftBase (newTVarIO (Ring.newRingBuffer qlen))
+mkPayloadQ :: forall m a.
+           (HasStaticDuration a, MonadBaseControl IO m)
+           => Int
+           -> m (PayloadQ a)
+mkPayloadQ qlen = MkPayloadQ segmentDuration
+                             (fromIntegral qlen * 0.5 * segmentDuration) <$> liftBase (newTMVarIO (Ring.newRingBuffer qlen))
+  where
+    segmentDuration = getStaticDuration (Proxy :: Proxy a)
 
 payloadQSink :: (NFData a, MonadBaseControl IO m)
              => PayloadQ a
@@ -64,14 +70,15 @@ payloadQSink (MkPayloadQ _ _ !ringRef) =
   where
     go !x = do
         maybe (return ()) pushInRing (x ^? payload)
-        !_ring <- liftBase $ atomically $ readTVar ringRef
         return ()
       where
-        pushInRing = liftBase .
-            atomically .
-                modifyTVar ringRef . Ring.push . Just
+        pushInRing buf = liftBase $
+            atomically $ do
+                !ring <- takeTMVar ringRef
+                let !ring' = withStrategy rdeepseq (Ring.push (Just buf) ring)
+                putTMVar ringRef ring'
 
-payloadQSource :: (Random i, NFData c, HasDuration c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, NFData t, NFData s)
+payloadQSource :: (Random i, NFData c, HasStaticDuration c, HasDuration c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, NFData t, NFData s)
                => PayloadQ c
                -> Source m (Stream i s (Ticks r t) (Discontinous c))
 payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
@@ -90,7 +97,6 @@ payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
                              <*> use ppSeqNum) >>=
         yieldStartFrameCtx
 
-
     pollIntervallMicros :: Ticks 1000000 Int
     pollIntervallMicros = nominalDiffTime # pollIntervall
 
@@ -102,14 +108,13 @@ payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
             threadDelay (_ticks (pollIntervallMicros - pollIntervallAdjustment))
             !dt <- _utcClockTimeDiff <$> timeSince t0
             (!bufs, !dt', !timeMissing, !ringSize) <- atomically $ do
-                                                          !ring <- readTVar ringRef
+                                                          !ring <- takeTMVar ringRef
                                                           let (!bufs, !ring', !dt', !timeMissing) =
                                                                   popUntil ring
                                                                            dt
                                                                   `using`
                                                                   rdeepseq
-                                                          writeTVar ringRef
-                                                                    ring'
+                                                          putTMVar ringRef ring'
                                                           return ( bufs
                                                                  , dt'
                                                                  , timeMissing
@@ -131,7 +136,7 @@ payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
                                            case mbuf of
                                                Nothing -> popUntil_ ring'
                                                                     (dt - pTime)
-                                                                    (Missing pTime :
+                                                                    (Missing :
                                                                          acc)
                                                                     (timeMissing +
                                                                          pTime)
@@ -143,7 +148,7 @@ payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
                                                                       timeMissing
                 | otherwise = popUntil_ ring
                                         (dt - pTime)
-                                        (Missing pTime : acc)
+                                        (Missing : acc)
                                         (timeMissing + pTime)
 
     yieldNextBuffer !buf = do

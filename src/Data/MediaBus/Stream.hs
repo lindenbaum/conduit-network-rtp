@@ -44,7 +44,7 @@ import           Control.Lens
 import           Data.MediaBus.SourceId
 import           Data.MediaBus.Sequence
 import           Data.MediaBus.Payload
-import           Data.MediaBus.Clock
+import           Data.MediaBus.Ticks
 import           Data.MediaBus.Series
 import           Control.Monad.Writer.Strict   ( tell )
 import           Data.Maybe
@@ -56,10 +56,13 @@ import           GHC.TypeLits
 import           GHC.Generics                  ( Generic )
 import           Control.Parallel.Strategies   ( NFData, rdeepseq, withStrategy )
 
+-- TODO remove SourceId' or create SourceId32/..64/...
 type SourceId' = SourceId Word32
 
+-- TODO remove SeqNum' or create SeqNum16/32/...
 type SeqNum' = SeqNum Word16
 
+-- TODO remove Ticks' or create Ticks32/64/...
 type Ticks' r = Ticks r Word32
 
 data FrameCtx i s t = MkFrameCtx { _frameCtxSourceId     :: !i

@@ -8,7 +8,7 @@ import           Data.MediaBus.Stream
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Audio.Channels
 import           Data.MediaBus.BlankMedia
-import           Data.MediaBus.Clock
+import           Data.MediaBus.Ticks
 import           Data.MediaBus.Sample
 import           Data.MediaBus.Transcoder
 import           Data.Bits

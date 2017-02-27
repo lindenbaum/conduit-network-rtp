@@ -13,7 +13,7 @@ import           Data.MediaBus.DebugSink      as X
 import           Data.MediaBus.Discontinous   as X
 import           Data.MediaBus.Monotone       as X
 import           Data.MediaBus.OrderedBy      as X
-import           Data.MediaBus.Packetizer     as X
+import           Data.MediaBus.Segment        as X
 import           Data.MediaBus.Payload        as X
 import           Data.MediaBus.Reorder        as X
 import           Data.MediaBus.RingBuffer     as X
@@ -24,5 +24,7 @@ import           Data.MediaBus.Sequence       as X
 import           Data.MediaBus.Series         as X
 import           Data.MediaBus.SourceId       as X
 import           Data.MediaBus.Stream         as X
+import           Data.MediaBus.StreamSegment  as X
+import           Data.MediaBus.Ticks          as X
 import           Data.MediaBus.Transcoder     as X
 import           Data.MediaBus.Transport.Udp  as X

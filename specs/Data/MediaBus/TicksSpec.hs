@@ -1,4 +1,4 @@
-module Data.MediaBus.ClockSpec ( spec ) where
+module Data.MediaBus.TicksSpec ( spec ) where
 
 import           Data.MediaBus
 import           Test.QuickCheck

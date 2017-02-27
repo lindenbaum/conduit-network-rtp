@@ -21,8 +21,8 @@ import           Control.Monad.ST                ( ST, runST )
 import           GHC.Exts                        ( IsList(..) )
 import           Data.Typeable
 import           Data.MediaBus.BlankMedia
-import           Data.MediaBus.Clock
-import           Data.MediaBus.Packetizer
+import           Data.MediaBus.Segment
+import           Data.MediaBus.Ticks
 import qualified Data.ByteString                 as B
 import qualified Data.Vector.Storable.ByteString as Spool
 import           Data.Default
@@ -74,16 +74,18 @@ instance (HasDuration (Proxy sampleType), SV.Storable sampleType) =>
         fromIntegral (sampleCount sb)
 
 instance (SV.Storable a, HasDuration (Proxy a)) =>
-         CanSplitAfterDuration (SampleBuffer a) where
-    splitAfterDuration !tPacket buf@(MkSampleBuffer !bufV)
-        | getDuration buf > tPacket =
+         CanSegment (SampleBuffer a) where
+    splitAfterDuration proxy buf@(MkSampleBuffer !bufV)
+        | getDuration buf >= tPacket =
               let (!nextPacket, !rest) = SV.splitAt n bufV
+
               in
-                  Just ( MkSampleBuffer (SV.force nextPacket)
+                  Just ( MkSegment (MkSampleBuffer (SV.force nextPacket))
                        , MkSampleBuffer rest
                        )
         | otherwise = Nothing
       where
+        !tPacket = getStaticDuration proxy
         !n = ceiling (tPacket / tSample)
         !tSample = getDuration (Proxy :: Proxy a)
 

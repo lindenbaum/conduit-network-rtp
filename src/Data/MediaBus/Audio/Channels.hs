@@ -8,7 +8,7 @@ module Data.MediaBus.Audio.Channels
 
 import           Control.Lens
 import           Foreign.Storable
-import           Data.MediaBus.Clock
+import           Data.MediaBus.Ticks
 import           Data.MediaBus.BlankMedia
 import           Test.QuickCheck
 import           Data.Proxy

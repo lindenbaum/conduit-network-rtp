@@ -5,22 +5,29 @@ module Data.MediaBus.DebugSink
 
 import           Data.MediaBus.Audio.Raw
 import           Data.MediaBus.Sample
+import           Data.MediaBus.Segment
 import           Data.MediaBus.Stream
-import           System.IO                     ( Handle, hClose )
-import           System.Process                ( shell )
-import           Data.Streaming.Process        ( Inherited(..)
-                                               , streamingProcess
-                                               , waitForStreamingProcess )
-import qualified Data.ByteString               as B
+import           System.IO               ( Handle, hClose )
+import           System.Process          ( shell )
+import           Data.Streaming.Process  ( Inherited(..), streamingProcess
+                                         , waitForStreamingProcess )
+import qualified Data.ByteString         as B
 import           Data.Conduit
 import           Control.Monad.IO.Class
 import           Data.Proxy
 import           Text.Printf
 import           GHC.TypeLits
 import           Data.Default
+import           Control.Lens
 
 class HasDebugPlaybackSink s t c where
     debugPlaybackSink :: MonadIO m => Sink (Frame s t c) m ()
+
+instance HasDebugPlaybackSink s t c =>
+         HasDebugPlaybackSink s t (Segment d c) where
+    debugPlaybackSink = mapInput (over payload _segmentContent)
+                                 (Just . over payload MkSegment)
+                                 debugPlaybackSink
 
 instance KnownNat r =>
          HasDebugPlaybackSink s t (SampleBuffer (S16 r)) where
