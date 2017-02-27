@@ -1,5 +1,6 @@
 module Main where
 
+import           System.Environment
 import           Data.MediaBus.AsyncConduit
 import           Conduit
 import           Control.Concurrent
@@ -20,13 +21,17 @@ maxFrames :: Int
 maxFrames = 15000
 
 main :: IO ()
-main = mainASync
+main = do
+    args <- getArgs
+    case args of
+        [] -> mainASync
+        (_ : _) -> mainSync
 
 mainASync :: IO ()
 mainASync = runResourceT $
-    withAsyncPolledSource 500
+    withAsyncPolledSource 20
                           (rtpAlawUdpReceiver16kHzS16 10000 "127.0.01" 5)
-                          (\(_, src) -> do
+                          (\(_, !src) -> do
                                runConduit (src .|
                                                exitAfterC maxFrames .|
                                                concealMissing blank .|

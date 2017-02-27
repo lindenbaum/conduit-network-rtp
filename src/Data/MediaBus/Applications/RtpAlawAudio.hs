@@ -26,7 +26,7 @@ rtpAlawUdpReceiver16kHzS16 :: MonadResource m
                            => Int
                            -> HostPreference
                            -> Int
-                           -> Source m (Stream RtpSsrc RtpSeqNum (Ticks 16000 Word64) (Segment (160 :@ 16000) (SampleBuffer (S16 16000))))
+                           -> Source m (Stream RtpSsrc RtpSeqNum (Ticks 16000 Word64) (Segment (640 :@ 16000) (SampleBuffer (S16 16000))))
 rtpAlawUdpReceiver16kHzS16 !udpListenPort !udpListenIP !reorderBufferSize =
     annotateTypeSource (Proxy :: Proxy (Stream (SourceId (Maybe SockAddr)) RtpSeqNum (ClockTimeDiff UtcClock) B.ByteString))
                        (udpDatagramSource useUtcClock udpListenPort udpListenIP) .|
