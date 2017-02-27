@@ -23,7 +23,6 @@ library
                      , Data.MediaBus.Audio.Channels
                      , Data.MediaBus.Audio.Raw
                      , Data.MediaBus.Audio.Resample
-                     , Data.MediaBus.BiIndex
                      , Data.MediaBus.BlankMedia
                      , Data.MediaBus.Clock
                      , Data.MediaBus.Conduit
@@ -35,7 +34,6 @@ library
                      , Data.MediaBus.StreamSegment
                      , Data.MediaBus.Payload
                      , Data.MediaBus.Reorder
-                     , Data.MediaBus.RingBuffer
                      , Data.MediaBus.Rtp
                      , Data.MediaBus.Rtp.Packet
                      , Data.MediaBus.Sample
@@ -123,8 +121,6 @@ test-suite tests
   hs-source-dirs:      specs
   main-is:             Spec.hs
   other-modules:       Data.MediaBus.Audio.ResampleSpec
-                     , Data.MediaBus.BiIndexSpec
-                     , Data.MediaBus.RingBufferSpec
                      , Data.MediaBus.StreamSegmentSpec
                      , Data.MediaBus.ReorderSpec
                      , Data.MediaBus.RtpSpec

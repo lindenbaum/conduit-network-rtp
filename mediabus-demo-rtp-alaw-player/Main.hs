@@ -3,7 +3,6 @@ module Main where
 import           System.Environment
 import           Data.MediaBus.AsyncConduit
 import           Conduit
-import           Control.Concurrent
 import           Data.MediaBus
 import           Data.MediaBus.Applications.RtpAlawAudio
 
@@ -31,11 +30,10 @@ mainASync :: IO ()
 mainASync = runResourceT $
     withAsyncPolledSource 20
                           (rtpAlawUdpReceiver16kHzS16 10000 "127.0.01" 5)
-                          (\(_, !src) -> do
-                               runConduit (src .|
-                                               exitAfterC maxFrames .|
-                                               concealMissing blank .|
-                                               streamDebugPlaybackSink))
+                          (\(_, !src) -> runConduit (src .|
+                                                         exitAfterC maxFrames .|
+                                                         concealMissing blank .|
+                                                         streamDebugPlaybackSink))
 
 mainSync :: IO ()
 mainSync = runConduitRes (rtpAlawUdpReceiver16kHzS16 10000 "127.0.01" 20 .|
