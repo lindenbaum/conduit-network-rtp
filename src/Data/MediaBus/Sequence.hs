@@ -1,12 +1,16 @@
 module Data.MediaBus.Sequence
     ( SeqNum(..)
+    , type SeqNum8
+    , type SeqNum16
+    , type SeqNum32
+    , type SeqNum64
     , HasSeqNumT(..)
     , HasSeqNum(..)
     , fromSeqNum
     , synchronizeToSeqNum
     ) where
 
-import           Test.QuickCheck                 ( Arbitrary(..) )
+import           Test.QuickCheck            ( Arbitrary(..) )
 import           Conduit
 import           Data.MediaBus.Monotone
 import           Data.MediaBus.Series
@@ -14,9 +18,10 @@ import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Default
 import           Text.Printf
-import           GHC.Generics                    ( Generic )
+import           GHC.Generics               ( Generic )
 import           Control.DeepSeq
 import           System.Random
+import           Data.Word
 
 class SetSeqNum t (GetSeqNum t) ~ t =>
       HasSeqNumT t where
@@ -39,6 +44,14 @@ instance (HasSeqNum a, HasSeqNum b, GetSeqNum a ~ GetSeqNum b) =>
 
 newtype SeqNum s = MkSeqNum { _fromSeqNum :: s }
     deriving (Num, Eq, Bounded, Enum, LocalOrd, Arbitrary, Default, Generic, Random)
+
+type SeqNum8 = SeqNum Word8
+
+type SeqNum16 = SeqNum Word16
+
+type SeqNum32 = SeqNum Word32
+
+type SeqNum64 = SeqNum Word64
 
 instance NFData s =>
          NFData (SeqNum s)

@@ -1,21 +1,15 @@
 module Data.MediaBus.Stream
     ( HasPayload(..)
-    , type SourceId'
-    , type SeqNum'
-    , type Ticks'
     , FrameCtx(..)
-    , type FrameCtx'
     , frameCtxSourceId
     , frameCtxSeqNumRef
     , frameCtxTimestampRef
     , frameCtxInit
     , Frame(..)
-    , type Frame'
     , frameSeqNum
     , frameTimestamp
     , framePayload
     , Stream(..)
-    , Stream'
     , stream
     , yieldStreamish
     , yieldStreamish'
@@ -42,14 +36,12 @@ module Data.MediaBus.Stream
 import           Conduit
 import           Control.Monad
 import           Control.Lens
-import           Data.MediaBus.SourceId
 import           Data.MediaBus.Sequence
 import           Data.MediaBus.Payload
 import           Data.MediaBus.Ticks
 import           Data.MediaBus.Series
 import           Control.Monad.Writer.Strict ( tell )
 import           Data.Maybe
-import           Data.Word
 import           Test.QuickCheck
 import           Data.Default
 import           Text.Printf
@@ -57,15 +49,7 @@ import           GHC.TypeLits
 import           GHC.Generics                ( Generic )
 import           Control.Parallel.Strategies ( NFData, rdeepseq, withStrategy )
 
--- TODO remove SourceId' or create SourceId32/..64/...
-type SourceId' = SourceId Word32
-
--- TODO remove SeqNum' or create SeqNum16/32/...
-type SeqNum' = SeqNum Word16
-
 -- TODO remove Ticks' or create Ticks32/64/...
-type Ticks' r = Ticks r Word32
-
 data FrameCtx i s t p = MkFrameCtx { _frameCtxSourceId     :: !i
                                    , _frameCtxTimestampRef :: !t
                                    , _frameCtxSeqNumRef    :: !s
@@ -75,8 +59,6 @@ data FrameCtx i s t p = MkFrameCtx { _frameCtxSourceId     :: !i
 
 instance (NFData i, NFData s, NFData t, NFData p) =>
          NFData (FrameCtx i s t p)
-
-type FrameCtx' r = FrameCtx SourceId' SeqNum' (Ticks' r) ()
 
 makeLenses ''FrameCtx
 
@@ -132,8 +114,6 @@ instance (NFData c, NFData s, NFData t) =>
 
 deriving instance Functor (Frame s t)
 
-type Frame' r v = Frame SeqNum' (Ticks' r) v
-
 makeLenses ''Frame
 
 instance HasPayload (Frame s t c) where
@@ -179,8 +159,6 @@ instance (NFData i, NFData s, NFData t, NFData c, NFData p) =>
          NFData (Stream i s t p c)
 
 type Streamish i s t p c = Series (FrameCtx i s t p) (Frame s t c)
-
-type Stream' t c = Stream SourceId' SeqNum' (Ticks' t) () c
 
 makeLenses ''Stream
 

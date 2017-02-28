@@ -3,6 +3,14 @@ module Data.MediaBus.Ticks
     , HasTimestampT(..)
     , HasTimestamp(..)
     , Ticks(..)
+    , type Ticks32
+    , type Ticks64
+    , type Ticks32At8000
+    , type Ticks32At16000
+    , type Ticks32At48000
+    , type Ticks64At8000
+    , type Ticks64At16000
+    , type Ticks64At48000
     , mkTicks
     , at8kHzU32
     , at16kHzU32
@@ -45,6 +53,17 @@ import Text.Printf
 
 newtype Ticks (rate :: Nat) w = MkTicks { _ticks :: w }
     deriving (Eq, Real, Integral, Enum, LocalOrd, Num, Arbitrary, Default, Generic, Random)
+
+type Ticks32 r = Ticks r Word32
+type Ticks64 r = Ticks r Word64
+
+type Ticks32At8000 = Ticks32 8000
+type Ticks32At16000 = Ticks32 16000
+type Ticks32At48000 = Ticks32 48000
+
+type Ticks64At8000 = Ticks64 8000
+type Ticks64At16000 = Ticks64 16000
+type Ticks64At48000 = Ticks64 48000
 
 instance NFData w =>
          NFData (Ticks rate w)

@@ -1,6 +1,8 @@
 module Data.MediaBus.SourceId
     ( HasSourceIdT(..)
     , SourceId(..)
+    , type SrcId32
+    , type SrcId64
     , sourceId
     ) where
 
@@ -9,6 +11,7 @@ import           Test.QuickCheck
 import           Data.Default
 import           GHC.Generics    ( Generic )
 import           Control.DeepSeq
+import           Data.Word
 
 class SetSourceId a (GetSourceId a) ~ a =>
       HasSourceIdT a where
@@ -19,6 +22,10 @@ class SetSourceId a (GetSourceId a) ~ a =>
 -- representation, the 'identity'.
 newtype SourceId i = MkSourceId { _sourceId :: i }
     deriving (Eq, Arbitrary, Default, Ord, Generic)
+
+type SrcId32 = SourceId Word32
+
+type SrcId64 = SourceId Word64
 
 instance (NFData i) =>
          NFData (SourceId i)

@@ -32,7 +32,7 @@ expectedResamplingResult xs lastVal =
                           ])
               (zip (lastVal : xs) xs)
 
-resampleAndConsume :: Source Identity (Stream' 48000 (SampleBuffer (S16 8000)))
+resampleAndConsume :: Source Identity (Stream SrcId32 SeqNum32 Ticks32At48000 () (SampleBuffer (S16 8000)))
                    -> S16 8000
                    -> SampleBuffer (S16 16000)
 resampleAndConsume vvv lastVal =
@@ -42,7 +42,7 @@ resampleAndConsume vvv lastVal =
 
 singleFrameFromList :: Monad m
                     => [S16 8000]
-                    -> Source m (Stream' 48000 (SampleBuffer (S16 8000)))
+                    -> Source m (Stream SrcId32 SeqNum32 Ticks32At48000 () (SampleBuffer (S16 8000)))
 singleFrameFromList x = mapOutput (MkStream . Next)
                                   (mapOutput (MkFrame () def)
                                              (yield (sampleBufferFromList x)) .|
@@ -50,7 +50,7 @@ singleFrameFromList x = mapOutput (MkStream . Next)
 
 framesFromLists :: Monad m
                 => [[S16 8000]]
-                -> Source m (Stream' 48000 (SampleBuffer (S16 8000)))
+                -> Source m (Stream SrcId32 SeqNum32 Ticks32At48000 () (SampleBuffer (S16 8000)))
 framesFromLists xs = mapOutput (MkStream . Next)
                                (mapOutput (MkFrame () def)
                                           (mapM_ (yield . sampleBufferFromList)
