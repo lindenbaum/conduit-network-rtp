@@ -39,8 +39,8 @@ spec = describe "segmentC" $ do
 withTestData :: HasStaticDuration d
              => [TestLen]
              -> PT d
-             -> ([Stream () Word8 (Ticks 8000 Word32) (SampleBuffer (S16 8000))]
-                 -> [Stream () Word8 (Ticks 8000 Word32) (Segment d (SampleBuffer (S16 8000)))]
+             -> ([Stream () Word8 (Ticks 8000 Word32) () (SampleBuffer (S16 8000))]
+                 -> [Stream () Word8 (Ticks 8000 Word32) () (Segment d (SampleBuffer (S16 8000)))]
                  -> res)
              -> res
 withTestData ls pt f = let inputs = mkTestInputs ls
@@ -59,15 +59,15 @@ ticksStrictlyMonotoneIncreasing dur outs =
         all (== dur) $ zipWith (-) (Prelude.drop 2 res) (Prelude.drop 1 res)
 
 runSegmentC :: (HasStaticDuration d, HasDuration c, CanSegment c, Monoid c)
-            => [Stream () Word8 (Ticks 8000 Word32) c]
+            => [Stream () Word8 (Ticks 8000 Word32) () c]
             -> PT d
-            -> [Stream () Word8 (Ticks 8000 Word32) (Segment d c)]
+            -> [Stream () Word8 (Ticks 8000 Word32) () (Segment d c)]
 runSegmentC inputs _p = runConduitPure (sourceList inputs .|
                                             segmentC .|
                                             consume)
 
 mkTestInputs :: [TestLen]
-             -> [Stream () Word8 (Ticks 8000 Word32) (SampleBuffer (S16 8000))]
+             -> [Stream () Word8 (Ticks 8000 Word32) () (SampleBuffer (S16 8000))]
 mkTestInputs = reverse .
     snd .
         foldl (\((ts0, sn0), acc0) (MkTestLen len) ->
@@ -79,7 +79,7 @@ mkTestInputs = reverse .
     mkTestPacket sn ts len =
         MkStream (Next (MkFrame ts sn (MkSampleBuffer (V.replicate len 0))))
 
-    mkTestStartPacket = MkStream (Start (MkFrameCtx () 0 0))
+    mkTestStartPacket = MkStream (Start (MkFrameCtx () 0 0 ()))
 
 data PT d where
         PT0 :: PT (0 :@ 1)

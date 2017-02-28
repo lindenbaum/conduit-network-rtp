@@ -34,11 +34,11 @@ data PollPayloadSourceSt s t =
 
 makeLenses ''PollPayloadSourceSt
 
-withAsyncPolledSource :: (MonadResource m, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Default c, HasStaticDuration c, HasDuration c, NFData c, NFData s, NFData t, Random i, Random t, Random s, Show c)
+withAsyncPolledSource :: (MonadResource m, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, Default c, Default p, HasStaticDuration c, HasDuration c, NFData c, NFData p, NFData s, NFData t, Random i, Random t, Random s, Show c)
                       => Int
-                      -> Source m (Stream i s (Ticks r t) c)
+                      -> Source m (Stream i s (Ticks r t) p c)
                       -> (( Async ()
-                          , Source m (Stream i s (Ticks r t) (Discontinous c))
+                          , Source m (Stream i s (Ticks r t) p (Discontinous c))
                           )
                           -> m o)
                       -> m o
@@ -63,7 +63,7 @@ mkPayloadQ qlen = MkPayloadQ segmentDuration
 
 payloadQSink :: (NFData a, MonadBaseControl IO m, Show a)
              => PayloadQ a
-             -> Sink (Stream i s t a) m ()
+             -> Sink (Stream i s t p a) m ()
 payloadQSink (MkPayloadQ _ _ !ringRef) =
     awaitForever go
   where
@@ -78,9 +78,9 @@ payloadQSink (MkPayloadQ _ _ !ringRef) =
                 when isFull (void $ readTBQueue ringRef)
                 writeTBQueue ringRef buf
 
-payloadQSource :: (Random i, NFData c, HasStaticDuration c, HasDuration c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, NFData t, NFData s)
+payloadQSource :: (Random i, NFData c, NFData p, Default p, HasStaticDuration c, HasDuration c, MonadBaseControl IO m, KnownNat r, Integral t, Integral s, NFData t, NFData s)
                => PayloadQ c
-               -> Source m (Stream i s (Ticks r t) (Discontinous c))
+               -> Source m (Stream i s (Ticks r t) p (Discontinous c))
 payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
     evalStateC (MkPollPayloadSourceSt 0 0) $ do
         yieldStart
@@ -103,7 +103,8 @@ payloadQSource (MkPayloadQ pTime pollIntervall ringRef) =
         replicateM_ (floor (dt / pTime)) (yieldNextBuffer Missing)
     yieldStart = (MkFrameCtx <$> liftBase randomIO
                              <*> use ppTicks
-                             <*> use ppSeqNum) >>=
+                             <*> use ppSeqNum
+                             <*> pure def) >>=
         yieldStartFrameCtx
 
     pollIntervallMicros :: Ticks 1000000 Int

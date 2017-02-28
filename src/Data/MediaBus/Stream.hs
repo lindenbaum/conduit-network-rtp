@@ -8,6 +8,7 @@ module Data.MediaBus.Stream
     , frameCtxSourceId
     , frameCtxSeqNumRef
     , frameCtxTimestampRef
+    , frameCtxInit
     , Frame(..)
     , type Frame'
     , frameSeqNum
@@ -46,15 +47,15 @@ import           Data.MediaBus.Sequence
 import           Data.MediaBus.Payload
 import           Data.MediaBus.Ticks
 import           Data.MediaBus.Series
-import           Control.Monad.Writer.Strict   ( tell )
+import           Control.Monad.Writer.Strict ( tell )
 import           Data.Maybe
 import           Data.Word
 import           Test.QuickCheck
 import           Data.Default
 import           Text.Printf
 import           GHC.TypeLits
-import           GHC.Generics                  ( Generic )
-import           Control.Parallel.Strategies   ( NFData, rdeepseq, withStrategy )
+import           GHC.Generics                ( Generic )
+import           Control.Parallel.Strategies ( NFData, rdeepseq, withStrategy )
 
 -- TODO remove SourceId' or create SourceId32/..64/...
 type SourceId' = SourceId Word32
@@ -65,48 +66,56 @@ type SeqNum' = SeqNum Word16
 -- TODO remove Ticks' or create Ticks32/64/...
 type Ticks' r = Ticks r Word32
 
-data FrameCtx i s t = MkFrameCtx { _frameCtxSourceId     :: !i
-                                 , _frameCtxTimestampRef :: !t
-                                 , _frameCtxSeqNumRef    :: !s
-                                 }
+data FrameCtx i s t p = MkFrameCtx { _frameCtxSourceId     :: !i
+                                   , _frameCtxTimestampRef :: !t
+                                   , _frameCtxSeqNumRef    :: !s
+                                   , _frameCtxInit         :: !p
+                                   }
     deriving (Eq, Ord, Generic)
 
-instance (NFData i, NFData s, NFData t) =>
-         NFData (FrameCtx i s t)
+instance (NFData i, NFData s, NFData t, NFData p) =>
+         NFData (FrameCtx i s t p)
 
-type FrameCtx' r = FrameCtx SourceId' SeqNum' (Ticks' r)
+type FrameCtx' r = FrameCtx SourceId' SeqNum' (Ticks' r) ()
 
 makeLenses ''FrameCtx
 
-instance HasTimestampT (FrameCtx i s t) where
-    type GetTimestamp (FrameCtx i s t) = t
-    type SetTimestamp (FrameCtx i s t) t' = (FrameCtx i s t')
+instance HasTimestampT (FrameCtx i s t p) where
+    type GetTimestamp (FrameCtx i s t p) = t
+    type SetTimestamp (FrameCtx i s t p) t' = (FrameCtx i s t' p)
 
-instance HasTimestamp (FrameCtx i s t) where
+instance HasTimestamp (FrameCtx i s t p) where
     timestamp = frameCtxTimestampRef
 
-instance HasSeqNumT (FrameCtx i s t) where
-    type GetSeqNum (FrameCtx i s t) = s
-    type SetSeqNum (FrameCtx i s t) x = FrameCtx i x t
+instance HasSeqNumT (FrameCtx i s t p) where
+    type GetSeqNum (FrameCtx i s t p) = s
+    type SetSeqNum (FrameCtx i s t p) x = FrameCtx i x t p
 
-instance HasDuration (FrameCtx i s t) where
+instance HasDuration (FrameCtx i s t p) where
     getDuration _ = 0
 
-instance HasSeqNum (FrameCtx i s t) where
+instance HasSeqNum (FrameCtx i s t p) where
     seqNum = frameCtxSeqNumRef
 
-instance (Arbitrary i, Arbitrary s, Arbitrary t) =>
-         Arbitrary (FrameCtx i s t) where
-    arbitrary = MkFrameCtx <$> arbitrary <*> arbitrary <*> arbitrary
+instance (Arbitrary i, Arbitrary s, Arbitrary t, Arbitrary p) =>
+         Arbitrary (FrameCtx i s t p) where
+    arbitrary = MkFrameCtx <$> arbitrary
+                           <*> arbitrary
+                           <*> arbitrary
+                           <*> arbitrary
 
-instance (Default i, Default s, Default t) =>
-         Default (FrameCtx i s t) where
-    def = MkFrameCtx def def def
+instance (Default i, Default s, Default t, Default p) =>
+         Default (FrameCtx i s t p) where
+    def = MkFrameCtx def def def def
 
-instance (Show i, Show s, Show t) =>
-         Show (FrameCtx i s t) where
-    show (MkFrameCtx sid tsr snr) =
-        printf "FRAME-CTX: %15s | %15s | %15s" (show sid) (show snr) (show tsr)
+instance (Show i, Show s, Show t, Show p) =>
+         Show (FrameCtx i s t p) where
+    show (MkFrameCtx sid tsr snr spr) =
+        printf "FRAME-CTX: %15s | %15s | %15s | %s"
+               (show sid)
+               (show snr)
+               (show tsr)
+               (show spr)
 
 -- | A 'Frame' can be anything that has a start time and is exactly one time
 -- unit long, it can respresent anything ranging from an audio buffer with 20ms
@@ -163,79 +172,83 @@ instance (Show s, Show t, Show v) =>
     show (MkFrame ts sn v) =
         printf "FRAME: %15s | %15s | %s" (show sn) (show ts) (show v)
 
-newtype Stream i s t c = MkStream { _stream :: Streamish i s t c }
+newtype Stream i s t p c = MkStream { _stream :: Streamish i s t p c }
     deriving (Ord, Eq, Arbitrary, Generic)
 
-instance (NFData i, NFData s, NFData t, NFData c) =>
-         NFData (Stream i s t c)
+instance (NFData i, NFData s, NFData t, NFData c, NFData p) =>
+         NFData (Stream i s t p c)
 
-type Streamish i s t c = Series (FrameCtx i s t) (Frame s t c)
+type Streamish i s t p c = Series (FrameCtx i s t p) (Frame s t c)
 
-type Stream' t c = Stream SourceId' SeqNum' (Ticks' t) c
+type Stream' t c = Stream SourceId' SeqNum' (Ticks' t) () c
 
 makeLenses ''Stream
 
-instance HasPayload (Stream i s t c) where
-    type GetPayload (Stream i s t c) = c
-    type SetPayload (Stream i s t c) d = Stream i s t d
+instance HasPayload (Stream i s t p c) where
+    type GetPayload (Stream i s t p c) = c
+    type SetPayload (Stream i s t p c) d = Stream i s t p d
     payload = stream . _Next . payload
 
 instance HasDuration c =>
-         HasDuration (Stream i s t c) where
+         HasDuration (Stream i s t p c) where
     getDuration = maybe 0 getDuration . preview (stream . _Next)
 
-instance HasSeqNumT (Stream i s t c) where
-    type GetSeqNum (Stream i s t c) = s
-    type SetSeqNum (Stream i s t c) x = Stream i x t c
+instance HasSeqNumT (Stream i s t p c) where
+    type GetSeqNum (Stream i s t p c) = s
+    type SetSeqNum (Stream i s t p c) x = Stream i x t p c
 
-instance HasSeqNum (Stream i s t c) where
+instance HasSeqNum (Stream i s t p c) where
     seqNum = stream . seqNum
 
-instance HasTimestampT (Stream i s t c) where
-    type GetTimestamp (Stream i s t c) = t
-    type SetTimestamp (Stream i s t c) t' = Stream i s t' c
+instance HasTimestampT (Stream i s t p c) where
+    type GetTimestamp (Stream i s t p c) = t
+    type SetTimestamp (Stream i s t p c) t' = Stream i s t' p c
 
-instance HasTimestamp (Stream i s t c) where
+instance HasTimestamp (Stream i s t p c) where
     timestamp = stream . timestamp
 
 instance (Default c, Default s, Default t) =>
-         Default (Stream i s t c) where
+         Default (Stream i s t p c) where
     def = MkStream (Next (MkFrame def def def))
 
-instance (Show i, Show s, Show t, Show c) =>
-         Show (Stream i s t c) where
+instance (Show i, Show s, Show t, Show c, Show p) =>
+         Show (Stream i s t p c) where
     show (MkStream s) = show s
 
-yieldStreamish :: Monad m => Streamish i s t c -> Conduit a m (Stream i s t c)
+yieldStreamish :: Monad m
+               => Streamish i s t p c
+               -> Conduit a m (Stream i s t p c)
 yieldStreamish = yield . MkStream
 
-yieldStreamish' :: (NFData i, NFData s, NFData t, NFData c, Monad m)
-                => Streamish i s t c
-                -> Conduit a m (Stream i s t c)
+yieldStreamish' :: (NFData i, NFData s, NFData t, NFData c, NFData p, Monad m)
+                => Streamish i s t p c
+                -> Conduit a m (Stream i s t p c)
 yieldStreamish' = yield . withStrategy rdeepseq . MkStream
 
-yieldNextFrame :: Monad m => Frame s t c -> Conduit a m (Stream i s t c)
+yieldNextFrame :: Monad m => Frame s t c -> Conduit a m (Stream i s t p c)
 yieldNextFrame = yieldStreamish . Next
 
-yieldNextFrame' :: (NFData i, NFData s, NFData t, NFData c, Monad m)
+yieldNextFrame' :: (NFData i, NFData s, NFData t, NFData c, NFData p, Monad m)
                 => Frame s t c
-                -> Conduit a m (Stream i s t c)
+                -> Conduit a m (Stream i s t p c)
 yieldNextFrame' = yieldStreamish' . Next
 
-yieldStartFrameCtx :: Monad m => FrameCtx i s t -> Conduit a m (Stream i s t c)
+yieldStartFrameCtx :: Monad m
+                   => FrameCtx i s t p
+                   -> Conduit a m (Stream i s t p c)
 yieldStartFrameCtx = yieldStreamish . Start
 
-yieldStartFrameCtx' :: (NFData i, NFData s, NFData t, NFData c, NFData (FrameCtx i s t), Monad m)
-                    => FrameCtx i s t
-                    -> Conduit a m (Stream i s t c)
+yieldStartFrameCtx' :: (NFData i, NFData s, NFData t, NFData c, NFData p, NFData (FrameCtx i s t p), Monad m)
+                    => FrameCtx i s t p
+                    -> Conduit a m (Stream i s t p c)
 yieldStartFrameCtx' = yieldStreamish' . Start
 
 overStreamC :: Monad m
-            => Conduit (Series (FrameCtx i s t) (Frame s t c)) m (Series (FrameCtx i' s' t') (Frame s' t' c'))
-            -> Conduit (Stream i s t c) m (Stream i' s' t' c')
+            => Conduit (Series (FrameCtx i s t p) (Frame s t c)) m (Series (FrameCtx i' s' t' p') (Frame s' t' c'))
+            -> Conduit (Stream i s t p c) m (Stream i' s' t' p' c')
 overStreamC = mapInput _stream (Just . MkStream) . mapOutput MkStream
 
-toFramesC :: Monad m => Conduit (Stream i s t c) m (Frame s t c)
+toFramesC :: Monad m => Conduit (Stream i s t p c) m (Frame s t c)
 toFramesC = awaitForever go
   where
     go (MkStream (Start _)) =
@@ -245,66 +258,66 @@ toFramesC = awaitForever go
 
 mapFramesC' :: (NFData i, NFData s, NFData t, NFData c', Monad m)
             => (Frame s t c -> Frame s t c')
-            -> Conduit (Stream i s t c) m (Stream i s t c')
+            -> Conduit (Stream i s t p c) m (Stream i s t p c')
 mapFramesC' !f = mapC (over (stream . _Next) (withStrategy rdeepseq f))
 
 mapFramesC :: Monad m
            => (Frame s t c -> m (Frame s t c'))
-           -> Conduit (Stream i s t c) m (Stream i s t c')
+           -> Conduit (Stream i s t p c) m (Stream i s t p c')
 mapFramesC !f = mapMC (mapMOf (stream . _Next) f)
 
 mapSeqNumC :: Monad m
            => (s -> s')
-           -> Conduit (Stream i s t c) m (Stream i s' t c)
+           -> Conduit (Stream i s t p c) m (Stream i s' t p c)
 mapSeqNumC = mapC . over seqNum
 
 mapTicksC :: Monad m
           => (t -> t')
-          -> Conduit (Stream i s t c) m (Stream i s t' c)
+          -> Conduit (Stream i s t p c) m (Stream i s t' p c)
 mapTicksC = mapC . over timestamp
 
 mapTicksC' :: (NFData t, Monad m)
            => (t -> t')
-           -> Conduit (Stream i s t c) m (Stream i s t' c)
+           -> Conduit (Stream i s t p c) m (Stream i s t' p c)
 mapTicksC' = mapC . withStrategy rdeepseq . over timestamp
 
 mapPayloadMC :: Monad m
              => (c -> m c')
-             -> Conduit (Stream i s t c) m (Stream i s t c')
+             -> Conduit (Stream i s t p c) m (Stream i s t p c')
 mapPayloadMC = mapMC . mapMOf payload
 
-mapPayloadMC' :: (NFData (Stream i s t c'), Monad m)
+mapPayloadMC' :: (NFData (Stream i s t p c'), Monad m)
               => (c -> m c')
-              -> Conduit (Stream i s t c) m (Stream i s t c')
+              -> Conduit (Stream i s t p c) m (Stream i s t p c')
 mapPayloadMC' !f = mapMC (mapMOf payload f >=> return . withStrategy rdeepseq)
 
 mapPayloadC' :: (NFData c', Monad m)
              => (c -> c')
-             -> Conduit (Stream i s t c) m (Stream i s t c')
+             -> Conduit (Stream i s t p c) m (Stream i s t p c')
 mapPayloadC' !f = mapC (over payload (withStrategy rdeepseq . f))
 
-convertTicksC' :: forall proxy0 proxy1 m r t r' t' i s c.
+convertTicksC' :: forall proxy0 proxy1 m r t r' t' i s c p.
                (NFData t, NFData t', KnownNat r, KnownNat r', Integral t, Integral t', Monad m, NFData t')
                => proxy0 '(r, t)
                -> proxy1 '(r', t')
-               -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r' t') c)
+               -> Conduit (Stream i s (Ticks r t) p c) m (Stream i s (Ticks r' t') p c)
 convertTicksC' _ _ = mapTicksC' convertTicks
 
 foldStream :: (Monoid o, Monad m)
-           => (Stream i s t c -> o)
-           -> Sink (Stream i s t c) m o
+           => (Stream i s t p c -> o)
+           -> Sink (Stream i s t p c) m o
 foldStream !f = execWriterC $
     awaitForever $
         tell .
             f
 
 foldStreamM :: (Monoid o, Monad m)
-            => (Stream i s t c -> m o)
-            -> Sink (Stream i s t c) m o
+            => (Stream i s t p c -> m o)
+            -> Sink (Stream i s t p c) m o
 foldStreamM !f = execWriterC $
     awaitForever (lift . lift . f >=> tell)
 
-concatStreamContents :: (Monoid c, Monad m) => Sink (Stream i s t c) m c
+concatStreamContents :: (Monoid c, Monad m) => Sink (Stream i s t p c) m c
 concatStreamContents = foldStream (fromMaybe mempty .
                                        (^? stream .
                                                _Next .

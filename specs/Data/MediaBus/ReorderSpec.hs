@@ -11,7 +11,7 @@ import           Test.QuickCheck
 spec :: Spec
 spec = describe "reorderFramesBySeqNumC" $ do
     let runC inputs = runConduitPure (sourceList inputs .|
-                                          annotateTypeC (Proxy :: Proxy (Stream () Word8 () ()))
+                                          annotateTypeC (Proxy :: Proxy (Stream () Word8 () () ()))
                                                          (reorderFramesBySeqNumC 3) .|
                                           consume)
 
@@ -149,24 +149,24 @@ spec = describe "reorderFramesBySeqNumC" $ do
             \inputs -> runC inputs `shouldSatisfy`
                 isMonoIncreasingAndHigherThanStartSeqNum
 
-isMonoIncreasingAndHigherThanStartSeqNum :: [Stream () Word8 () ()] -> Bool
+isMonoIncreasingAndHigherThanStartSeqNum :: [Stream () Word8 () () ()] -> Bool
 isMonoIncreasingAndHigherThanStartSeqNum [] =
     True
-isMonoIncreasingAndHigherThanStartSeqNum (MkStream (Start (MkFrameCtx () () sn)) : rest) =
+isMonoIncreasingAndHigherThanStartSeqNum (MkStream (Start (MkFrameCtx () () sn ())) : rest) =
     isMonoIncreasingAndHigherThanStartSeqNumN sn rest
 isMonoIncreasingAndHigherThanStartSeqNum rest@(MkStream (Next (MkFrame () sn ())) : _) =
     isMonoIncreasingAndHigherThanStartSeqNumN sn rest
 
 isMonoIncreasingAndHigherThanStartSeqNumN _ [] =
     True
-isMonoIncreasingAndHigherThanStartSeqNumN _ (MkStream (Start (MkFrameCtx () () sn)) : rest) =
+isMonoIncreasingAndHigherThanStartSeqNumN _ (MkStream (Start (MkFrameCtx () () sn ())) : rest) =
     isMonoIncreasingAndHigherThanStartSeqNumN sn rest
 isMonoIncreasingAndHigherThanStartSeqNumN sn (MkStream (Next (MkFrame () snFrame ())) : rest)
     | snFrame >= sn = isMonoIncreasingAndHigherThanStartSeqNumN snFrame rest
     | otherwise = False
 
-startFrame :: Word8 -> Stream () Word8 () ()
-startFrame sn = MkStream (Start (MkFrameCtx () () sn))
+startFrame :: Word8 -> Stream () Word8 () () ()
+startFrame sn = MkStream (Start (MkFrameCtx () () sn ()))
 
-nextFrame :: Word8 -> Stream () Word8 () ()
+nextFrame :: Word8 -> Stream () Word8 () () ()
 nextFrame sn = MkStream (Next (MkFrame () sn ()))

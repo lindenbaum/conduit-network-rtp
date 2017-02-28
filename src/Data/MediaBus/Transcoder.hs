@@ -17,6 +17,6 @@ class Transcoder from to where
               => Frame s t from
               -> Frame s t to
 
-transcodeStreamC' :: (NFData to, NFData i, NFData s, NFData t, Monad m, Transcoder from to, TranscodingSeqNum from to s, TranscodingTicks from to t)
-                  => Conduit (Stream i s t from) m (Stream i s t to)
+transcodeStreamC' :: (NFData to, NFData p, NFData i, NFData s, NFData t, NFData p, Monad m, Transcoder from to, TranscodingSeqNum from to s, TranscodingTicks from to t)
+                  => Conduit (Stream i s t p from) m (Stream i s t p to)
 transcodeStreamC' = mapFramesC' transcode

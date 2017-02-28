@@ -18,12 +18,12 @@ import           GHC.TypeLits
 -- size. The sequence numbers will be offsetted by the number extra frames
 -- generated.
 segmentC :: (Num s, Monad m, HasDuration c, CanSegment c, Monoid c, Default i, KnownNat r, Integral t, HasStaticDuration d)
-         => Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r t) (Segment d c))
+         => Conduit (Stream i s (Ticks r t) p c) m (Stream i s (Ticks r t) p (Segment d c))
 segmentC = segmentC' Proxy
 
 segmentC' :: (Num s, Monad m, HasDuration c, CanSegment c, Monoid c, Default i, KnownNat r, Integral t, HasStaticDuration d)
           => proxy d
-          -> Conduit (Stream i s (Ticks r t) c) m (Stream i s (Ticks r t) (Segment d c))
+          -> Conduit (Stream i s (Ticks r t) p c) m (Stream i s (Ticks r t) p (Segment d c))
 segmentC' dpx = evalStateC (0, Nothing) $ awaitForever go
   where
     segmentDurationInTicks =

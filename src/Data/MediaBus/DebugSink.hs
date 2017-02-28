@@ -44,6 +44,6 @@ instance KnownNat r =>
             liftIO (B.hPut h (byteStringFromSampleBuffer d))
 
 streamDebugPlaybackSink :: (Default i, HasDebugPlaybackSink s t c, MonadIO m)
-                        => Sink (Stream i s t c) m ()
+                        => Sink (Stream i s t p c) m ()
 streamDebugPlaybackSink =
     toFramesC .| debugPlaybackSink

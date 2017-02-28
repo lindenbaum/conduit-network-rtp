@@ -23,17 +23,17 @@ data ReorderSt a b c = MkReorderSt { _expectedRank :: !a
 
 makeLenses ''ReorderSt
 
-reorderFramesBySeqNumC :: (Default s, Default i, Default t, Num s, Ord s, Monad m)
+reorderFramesBySeqNumC :: (Default s, Default i, Default t, Default p, Num s, Ord s, Monad m)
                        => Int
-                       -> Conduit (Stream i s t c) m (Stream i s t c)
+                       -> Conduit (Stream i s t p c) m (Stream i s t p c)
 reorderFramesBySeqNumC =
     reorderFramesByC seqNum (+ 1)
 
-reorderFramesByC :: (Monad m, Ord rank, Default i, Default t, Default s, Default rank)
-                 => Lens' (Stream i s t c) rank
+reorderFramesByC :: (Monad m, Ord rank, Default i, Default t, Default s, Default p, Default rank)
+                 => Lens' (Stream i s t p c) rank
                  -> (rank -> rank)
                  -> Int
-                 -> Conduit (Stream i s t c) m (Stream i s t c)
+                 -> Conduit (Stream i s t p c) m (Stream i s t p c)
 reorderFramesByC !frameRank !getNextRank !maxQueueLen =
     evalStateC (MkReorderSt def Set.empty 0 def) go
   where

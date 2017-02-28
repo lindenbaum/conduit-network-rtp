@@ -21,18 +21,18 @@ rtpSourceSpec = describe "rtpSource" $ do
                                  Next _ -> n)
                             0
         runTestConduit inputs = runConduitPure (sourceList inputs .|
-                                                    annotateTypeCIn (Proxy :: Proxy (Stream Int Int Int B.ByteString))
+                                                    annotateTypeCIn (Proxy :: Proxy (Stream Int Int Int () B.ByteString))
                                                                     rtpSource .|
                                                     consume)
 
     it "yields 'Start' when only when the first payload packet arrives" $
-        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0)) ]
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0 ())) ]
         in
             countStarts (_stream <$> runTestConduit inputs) `shouldBe`
                 0
 
     it "yields 'Start' when the first packet arrives" $
-        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0 ()))
                      , mkTestRtpPacket 0 0 0
                      ]
         in
@@ -40,7 +40,7 @@ rtpSourceSpec = describe "rtpSource" $ do
                 1
 
     it "yields 'Start' when the ssrc changes" $
-        let inputs = [ MkStream (Start (MkFrameCtx 8 9 10))
+        let inputs = [ MkStream (Start (MkFrameCtx 8 9 10 ()))
                      , mkTestRtpPacket ssrc0 0 0
                      , mkTestRtpPacket ssrc0 0 0
                      , mkTestRtpPacket ssrc1 0 0
@@ -56,7 +56,7 @@ rtpSourceSpec = describe "rtpSource" $ do
                 4
 
     it "yields 'Start' when the sequence numbers change too much" $
-        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0 ()))
                      , mkTestRtpPacket 0 01 0
                      , mkTestRtpPacket 0 02 0
                      , mkTestRtpPacket 0 03 0
@@ -70,7 +70,7 @@ rtpSourceSpec = describe "rtpSource" $ do
                 3
 
     it "yields 'Start' when the sequence numbers change too much" $
-        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0 ()))
                      , mkTestRtpPacket 0 01 0
                      , mkTestRtpPacket 0 02 0
                      , mkTestRtpPacket 0 03 0
@@ -84,7 +84,7 @@ rtpSourceSpec = describe "rtpSource" $ do
                 3
 
     it "yields no 'Start' when the sequence number wraps around" $
-        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0 ()))
                      , mkTestRtpPacket 0 (negate 3) 0
                      , mkTestRtpPacket 0 (negate 2) 0
                      , mkTestRtpPacket 0 (negate 1) 0
@@ -96,7 +96,7 @@ rtpSourceSpec = describe "rtpSource" $ do
                 1
 
     it "yields no 'Start' when the timestamp wraps around" $
-        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0 ()))
                      , mkTestRtpPacket 0 0 (negate 300)
                      , mkTestRtpPacket 0 0 (negate 200)
                      , mkTestRtpPacket 0 0 (negate 100)
@@ -108,7 +108,7 @@ rtpSourceSpec = describe "rtpSource" $ do
                 1
 
     it "can handle broken packets without crashing" $
-        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0 ()))
                      , mkTestRtpPacket 0 0 777
                      , mkTestRtpPacket 0 0 777
                      , mkBrokenTestRtpPacket
@@ -133,14 +133,14 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
                                 consume)
 
     it "always yields the fallback element if the payload table contains no handler" $
-        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0))
+        let inputs = [ MkStream (Start (MkFrameCtx 0 0 0 ()))
                      , mkTestRtpPacket 0 0 0
                      ]
             outs = preview payload <$> runTestConduit inputs [] ()
         in
             outs `shouldBe` [ Nothing, Just () ]
     it "always yields the fallback element if the payload table contains no handler for the payload type" $
-        let inputs = MkStream (Start (MkFrameCtx 0 0 0)) :
+        let inputs = MkStream (Start (MkFrameCtx 0 0 0 ())) :
                 [ mkTestRtpPacketWithPayload 0
                                              0
                                              0
@@ -160,7 +160,7 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
                 [ Just fallback
                 | _ <- [0 .. 128 :: Word8] ]
     it "invokes the first matching payload handler" $
-        let inputs = MkStream (Start (MkFrameCtx 0 0 0)) :
+        let inputs = MkStream (Start (MkFrameCtx 0 0 0 ())) :
                 [ mkTestRtpPacketWithPayload 0 0 0 (mkTestPayload 8)
                 , mkTestRtpPacketWithPayload 0 0 0 (mkTestPayload 0)
                 ]
@@ -187,7 +187,7 @@ rtpPayloadDemuxSpec = describe "rtpPayloadDemux" $ do
             outputs `shouldBe`
                 [ Nothing, Just "first 8 handler", Just "first 0 handler" ]
 
-mkBrokenTestRtpPacket :: Stream Int Int Int B.ByteString
+mkBrokenTestRtpPacket :: Stream Int Int Int () B.ByteString
 mkBrokenTestRtpPacket = MkStream (Next (MkFrame 0 0 (B.pack [ 0, 0, 0 ])))
 
 mkTestPayload :: Rtp.RtpPayloadType -> Rtp.RtpPayload
@@ -196,7 +196,7 @@ mkTestPayload pt = Rtp.MkRtpPayload pt (sampleBufferFromList [ 0, 0, 0 ])
 mkTestRtpPacket :: Rtp.RtpSsrc
                 -> Rtp.RtpSeqNum
                 -> Rtp.RtpTimestamp
-                -> Stream Int Int Int B.ByteString
+                -> Stream Int Int Int () B.ByteString
 mkTestRtpPacket ssrc sn ts =
     mkTestRtpPacketWithPayload ssrc sn ts (mkTestPayload 0)
 
@@ -204,7 +204,7 @@ mkTestRtpPacketWithPayload :: Rtp.RtpSsrc
                            -> Rtp.RtpSeqNum
                            -> Rtp.RtpTimestamp
                            -> Rtp.RtpPayload
-                           -> Stream Int Int Int B.ByteString
+                           -> Stream Int Int Int () B.ByteString
 mkTestRtpPacketWithPayload ssrc sn ts p =
     MkStream (Next (MkFrame 0
                             0

@@ -10,9 +10,9 @@ import           Control.Monad.State.Strict
 import           Control.Lens
 import           Control.Parallel.Strategies  ( NFData, rdeepseq, using )
 
-resample8to16kHz' :: (NFData s, NFData t, NFData i, IsAudioSample sa, GetAudioSampleRate sa ~ 8000, Monad m, IsAudioSample (SetAudioSampleRate sa 16000), NFData (SetAudioSampleRate sa 16000))
+resample8to16kHz' :: (NFData s, NFData t, NFData p, NFData i, IsAudioSample sa, GetAudioSampleRate sa ~ 8000, Monad m, IsAudioSample (SetAudioSampleRate sa 16000), NFData (SetAudioSampleRate sa 16000))
                   => sa
-                  -> Conduit (Stream i s t (SampleBuffer sa)) m (Stream i s t (SampleBuffer (SetAudioSampleRate sa 16000)))
+                  -> Conduit (Stream i s t p (SampleBuffer sa)) m (Stream i s t p (SampleBuffer (SetAudioSampleRate sa 16000)))
 resample8to16kHz' !sa = evalStateC sa (mapPayloadMC' resample)
   where
     resample !sb

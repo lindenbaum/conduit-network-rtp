@@ -10,15 +10,16 @@ import           Data.MediaBus.Stream
 import           Data.MediaBus.SourceId
 import           Data.MediaBus.Sequence
 import           Data.Streaming.Network
-import           Network.Socket                 ( SockAddr, close )
-import qualified Data.ByteString                as B
+import           Network.Socket               ( SockAddr, close )
+import qualified Data.ByteString              as B
+import           Data.Default
 
 -- | A UDP source that uses 'MonandResource' to make sure the socket is closed.
-udpDatagramSource :: (IsClock c, MonadClock c m, MonadResource m, Num s)
+udpDatagramSource :: (IsClock c, MonadClock c m, MonadResource m, Num s, Default p)
                   => proxy c
                   -> Int
                   -> HostPreference
-                  -> Source m (Stream (SourceId (Maybe SockAddr)) (SeqNum s) (ClockTimeDiff c) B.ByteString)
+                  -> Source m (Stream (SourceId (Maybe SockAddr)) (SeqNum s) (ClockTimeDiff c) p B.ByteString)
 udpDatagramSource _clk port host = do
     !t0 <- lift now
     bracketP (bindPortUDP port host) close (`sourceSocket` 1024) .|
@@ -33,7 +34,8 @@ udpDatagramSource _clk port host = do
             _3 .= tNow
             yieldStartFrameCtx (MkFrameCtx (MkSourceId (Just currentSender))
                                            (timeAsTimeDiff tNow)
-                                           0)
+                                           0
+                                           def)
         sn <- _2 <<+= 1
         tStart <- use _3
         yieldNextFrame (MkFrame (diffTime tNow tStart) sn (msgData m))

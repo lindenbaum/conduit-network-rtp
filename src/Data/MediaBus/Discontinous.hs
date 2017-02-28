@@ -40,7 +40,7 @@ instance HasPayload a =>
 
 concealMissing :: (NFData c, Monad m)
                => c
-               -> Conduit (Stream i s t (Discontinous c)) m (Stream i s t c)
+               -> Conduit (Stream i s t p (Discontinous c)) m (Stream i s t p c)
 concealMissing conceal =
     mapPayloadC' go
   where
